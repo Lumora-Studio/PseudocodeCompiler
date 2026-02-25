@@ -62,6 +62,7 @@
       "target": [
         "dmg"
       ],
+      "icon": "electron/assets/icon.icns",
       "category": "public.app-category.developer-tools"
     },
     "dmg": {

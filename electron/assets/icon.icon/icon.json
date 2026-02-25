@@ -1,0 +1,53 @@
+{
+  "color-space-for-untagged-svg-colors" : "display-p3",
+  "fill" : "automatic",
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "blend-mode" : "normal",
+          "fill" : {
+            "linear-gradient" : [
+              "display-p3:0.25544,0.32058,0.73742,1.00000",
+              "display-p3:0.54556,0.77170,0.38088,1.00000"
+            ],
+            "orientation" : {
+              "start" : {
+                "x" : 1.0834615384615385,
+                "y" : -0.06083273251622206
+              },
+              "stop" : {
+                "x" : -0.07836538461538461,
+                "y" : 1.0520232516222061
+              }
+            }
+          },
+          "glass" : true,
+          "image-name" : "Pseudocode Compiler Icon  at Element .svg",
+          "name" : "Pseudocode Compiler Icon  at Element ",
+          "position" : {
+            "scale" : 0.52,
+            "translation-in-points" : [
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}
