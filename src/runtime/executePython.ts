@@ -5,15 +5,27 @@ interface PendingRequest {
   reject: (error: Error) => void;
 }
 
-interface WorkerResponse {
+interface WorkerRunResponse {
+  kind: "run-result";
   id: number;
   result: RunResult;
 }
+
+interface WorkerStatusMessage {
+  kind: "runtime-status";
+  status: "ready";
+}
+
+type WorkerMessage = WorkerRunResponse | WorkerStatusMessage;
+
+const DEFAULT_EXECUTION_TIMEOUT_MS = 12_000;
+const INITIALIZATION_TIMEOUT_MS = 45_000;
 
 class PythonRunner {
   private worker: Worker | null = null;
   private nextId = 1;
   private pending = new Map<number, PendingRequest>();
+  private runtimeReady = false;
 
   private ensureWorker(): Worker {
     if (this.worker) {
@@ -22,7 +34,12 @@ class PythonRunner {
 
     this.worker = new Worker(new URL("../workers/pythonRunner.worker.ts", import.meta.url));
 
-    this.worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
+    this.worker.onmessage = (event: MessageEvent<WorkerMessage>) => {
+      if (event.data.kind === "runtime-status") {
+        this.runtimeReady = event.data.status === "ready";
+        return;
+      }
+
       const { id, result } = event.data;
       const pending = this.pending.get(id);
       if (!pending) {
@@ -49,12 +66,15 @@ class PythonRunner {
       this.worker.terminate();
       this.worker = null;
     }
+    this.runtimeReady = false;
   }
 
-  async run(request: RunRequest, timeoutMs = 12000): Promise<RunResult> {
+  async run(request: RunRequest, timeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS): Promise<RunResult> {
     const worker = this.ensureWorker();
     const id = this.nextId;
     this.nextId += 1;
+    const runtimeWasReadyAtStart = this.runtimeReady;
+    const effectiveTimeoutMs = runtimeWasReadyAtStart ? timeoutMs : Math.max(timeoutMs, INITIALIZATION_TIMEOUT_MS);
 
     const workerPromise = new Promise<RunResult>((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
@@ -64,26 +84,35 @@ class PythonRunner {
     const timeoutPromise = new Promise<RunResult>((resolve) => {
       const timer = window.setTimeout(() => {
         this.pending.delete(id);
-        this.resetWorker();
+        const runtimeInitialized = this.runtimeReady || runtimeWasReadyAtStart;
+        if (runtimeInitialized) {
+          this.resetWorker();
+        }
         resolve({
           success: false,
           stdout: "",
-          stderr: "Execution timed out.",
+          stderr: runtimeInitialized
+            ? "Execution timed out."
+            : "Python runtime initialization timed out.",
           diagnostics: [
             {
-              code: "RUN408",
-              message: `Execution exceeded ${timeoutMs / 1000} seconds and was stopped.`,
+              code: runtimeInitialized ? "RUN408" : "RUN409",
+              message: runtimeInitialized
+                ? `Execution exceeded ${effectiveTimeoutMs / 1000} seconds and was stopped.`
+                : `Python runtime initialization exceeded ${effectiveTimeoutMs / 1000} seconds.`,
               severity: "error",
               line: 1,
               column: 1,
               endLine: 1,
               endColumn: 1,
-              hint: "Check for infinite loops or large computations.",
+              hint: runtimeInitialized
+                ? "Check for infinite loops or large computations."
+                : "The first run downloads Python runtime files. Check your internet connection and retry.",
             },
           ],
           virtualFiles: request.virtualFiles,
         });
-      }, timeoutMs);
+      }, effectiveTimeoutMs);
 
       workerPromise.finally(() => {
         window.clearTimeout(timer);

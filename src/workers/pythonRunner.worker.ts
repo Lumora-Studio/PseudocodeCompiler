@@ -11,9 +11,15 @@ type RunWorkerMessage = {
   };
 };
 
-type WorkerResponseMessage = {
+type WorkerRunResponseMessage = {
+  kind: "run-result";
   id: number;
   result: RunResult;
+};
+
+type WorkerStatusMessage = {
+  kind: "runtime-status";
+  status: "ready";
 };
 
 type PyProxyLike = {
@@ -40,6 +46,7 @@ declare const self: DedicatedWorkerGlobalScope & {
 
 let pyodideInstance: PyodideLike | null = null;
 let pyodideReady: Promise<PyodideLike> | null = null;
+let runtimeReadyNotified = false;
 
 async function getPyodide() {
   if (pyodideInstance) {
@@ -94,6 +101,11 @@ self.onmessage = async (event: MessageEvent<RunWorkerMessage>) => {
 
   try {
     const pyodide = await getPyodide();
+    if (!runtimeReadyNotified) {
+      const statusMessage: WorkerStatusMessage = { kind: "runtime-status", status: "ready" };
+      self.postMessage(statusMessage);
+      runtimeReadyNotified = true;
+    }
 
     pyodide.globals.set("__runner_source", request.pythonCode);
     pyodide.globals.set("__runner_stdin_json", JSON.stringify(request.stdinLines));
@@ -142,7 +154,7 @@ _runtime_vfs_out = _runtime_globals.get("__vfs", _runtime_globals.get("__virtual
       virtualFiles: (resultData.vfs ?? {}) as Record<string, string[]>,
     };
 
-    const response: WorkerResponseMessage = { id, result };
+    const response: WorkerRunResponseMessage = { kind: "run-result", id, result };
     self.postMessage(response);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown worker error";
@@ -164,7 +176,7 @@ _runtime_vfs_out = _runtime_globals.get("__vfs", _runtime_globals.get("__virtual
       virtualFiles: request.virtualFiles,
     };
 
-    const response: WorkerResponseMessage = { id, result };
+    const response: WorkerRunResponseMessage = { kind: "run-result", id, result };
     self.postMessage(response);
   }
 };
