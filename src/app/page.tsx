@@ -112,7 +112,7 @@ export default function HomePage() {
     <main className="exam-shell min-h-screen p-4 md:p-6">
       <div className="mx-auto max-w-[1600px] space-y-4">
         <header className="panel rounded-xl p-4 md:p-5">
-          <p className="text-xs uppercase tracking-[0.2em] text-[var(--accent)]">IGCSE Compiler Lab</p>
+          <p className="text-xs uppercase tracking-[0.2em] text-[var(--accent)]">IGCSE Pseudocode Compiler</p>
           <h1 className="mt-1 text-2xl font-semibold text-[var(--text)] md:text-3xl">
             Editor + Terminal
           </h1>

@@ -1,6 +1,7 @@
 const { app, BrowserWindow, shell } = require("electron");
 const http = require("http");
 const path = require("path");
+const fs = require("fs");
 const serveHandler = require("serve-handler");
 
 const isDev = !app.isPackaged;
@@ -33,12 +34,14 @@ async function startStaticServer() {
 }
 
 async function createWindow() {
+  const windowIconPath = path.join(__dirname, "assets", "icon.png");
   const win = new BrowserWindow({
     width: 1440,
     height: 900,
     minWidth: 1024,
     minHeight: 700,
     autoHideMenuBar: true,
+    icon: windowIconPath,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -63,6 +66,11 @@ async function createWindow() {
 }
 
 app.whenReady().then(() => {
+  const dockIconPath = path.join(__dirname, "assets", "icon.png");
+  if (isDev && process.platform === "darwin" && fs.existsSync(dockIconPath)) {
+    app.dock.setIcon(dockIconPath);
+  }
+
   createWindow().catch((error) => {
     console.error("Failed to create window:", error);
     app.quit();

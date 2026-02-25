@@ -1,5 +1,5 @@
 {
-  "name": "pseudocode-compiler-codex",
+  "name": "igcse-pseudocode-compiler",
   "version": "0.1.0",
   "private": true,
   "description": "Desktop and web IGCSE pseudocode compiler built with Next.js and Electron.",
@@ -49,8 +49,8 @@
     "wait-on": "^9.0.3"
   },
   "build": {
-    "appId": "com.alex.pseudocodecompilercodex",
-    "productName": "Pseudocode Compiler Codex",
+    "appId": "com.alex.igcsepseudocodecompiler",
+    "productName": "IGCSE Pseudocode Compiler",
     "electronDist": "node_modules/electron/dist",
     "files": [
       "electron/**/*",
@@ -62,10 +62,11 @@
       "target": [
         "dmg"
       ],
-      "icon": "electron/assets/icon.icns",
+      "icon": "electron/assets/icon.icon",
       "category": "public.app-category.developer-tools"
     },
     "dmg": {
+      "icon": "electron/assets/icon.icns",
       "artifactName": "${productName}-${version}-${arch}.${ext}"
     }
   }
