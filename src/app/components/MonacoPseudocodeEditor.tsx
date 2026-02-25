@@ -249,9 +249,14 @@ export function MonacoPseudocodeEditor({
       return true;
     };
 
+    let lastTabKeydownAt = 0;
+
     editor.onKeyDown((event) => {
       const browserKey = event.browserEvent.key;
       const browserCode = event.browserEvent.code;
+      if (browserKey === "Tab") {
+        lastTabKeydownAt = Date.now();
+      }
       const isQuoteKey =
         browserKey === "\"" ||
         browserKey === "'" ||
@@ -301,6 +306,11 @@ export function MonacoPseudocodeEditor({
             }
           }
         }
+      }
+
+      const shouldAutoCorrectForThisChange = Date.now() - lastTabKeydownAt <= 250;
+      if (!shouldAutoCorrectForThisChange) {
+        return;
       }
 
       const affectedLines = new Set<number>();

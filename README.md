@@ -282,5 +282,6 @@ Required secrets:
 ## Notes on current scope
 
 - The runtime supports stdin lines and virtual file maps internally.
-- The current home page UI wires runtime execution with empty stdin and empty virtual files by default.
+- The home page UI now includes a `Program Input (stdin)` box and executes with those lines.
+- The home page currently still wires runtime execution with empty virtual files by default.
 - Additional UI components (`VirtualFilesPanel`, `DiagnosticsPanel`, storage helpers for workspace state) exist in the repo and can be integrated/expanded further.

@@ -17,12 +17,27 @@ NEXT Number
 OUTPUT "Total = ", Total`;
 
 const SOURCE_STORAGE_KEY = "igcse-editor-source-v2";
+const STDIN_STORAGE_KEY = "igcse-editor-stdin-v1";
 
 function getInitialSource() {
   if (typeof window === "undefined") {
     return DEFAULT_SOURCE;
   }
   return window.localStorage.getItem(SOURCE_STORAGE_KEY) ?? DEFAULT_SOURCE;
+}
+
+function getInitialStdinText() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+  return window.localStorage.getItem(STDIN_STORAGE_KEY) ?? "";
+}
+
+function splitStdinLines(stdinText: string): string[] {
+  if (stdinText.length === 0) {
+    return [];
+  }
+  return stdinText.replace(/\r/g, "").split("\n");
 }
 
 function formatDiagnostics(diagnostics: Diagnostic[]): string {
@@ -39,6 +54,7 @@ function formatDiagnostics(diagnostics: Diagnostic[]): string {
 
 export default function HomePage() {
   const [source, setSource] = useState(getInitialSource);
+  const [stdinText, setStdinText] = useState(getInitialStdinText);
   const [compileDiagnostics, setCompileDiagnostics] = useState<Diagnostic[]>([]);
   const [terminalText, setTerminalText] = useState("Terminal ready. Compile or run your pseudocode.");
   const [isRunning, setIsRunning] = useState(false);
@@ -46,6 +62,10 @@ export default function HomePage() {
   useEffect(() => {
     window.localStorage.setItem(SOURCE_STORAGE_KEY, source);
   }, [source]);
+
+  useEffect(() => {
+    window.localStorage.setItem(STDIN_STORAGE_KEY, stdinText);
+  }, [stdinText]);
 
   const editorDiagnostics = useMemo(() => compileDiagnostics, [compileDiagnostics]);
 
@@ -82,7 +102,7 @@ export default function HomePage() {
 
     const runResult = await pythonRunner.run({
       pythonCode: compileResult.pythonCode,
-      stdinLines: [],
+      stdinLines: splitStdinLines(stdinText),
       virtualFiles: {},
     });
 
@@ -144,7 +164,17 @@ export default function HomePage() {
 
           <article className="panel rounded-xl p-4">
             <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--muted)]">Terminal</h2>
-            <pre className="mt-3 h-[72vh] min-h-[540px] overflow-auto rounded-md border border-[var(--panel-border)] bg-[var(--panel-bg)] p-3 font-mono text-xs text-[var(--text)]">
+            <label htmlFor="stdin-input" className="mt-3 block text-xs uppercase tracking-wider text-[var(--muted)]">
+              Program Input (stdin)
+            </label>
+            <textarea
+              id="stdin-input"
+              value={stdinText}
+              onChange={(event) => setStdinText(event.target.value)}
+              className="mt-2 h-24 w-full resize-y rounded-md border border-[var(--panel-border)] bg-[var(--panel-bg)] p-3 font-mono text-xs text-[var(--text)] outline-none focus:border-[var(--accent)]"
+              placeholder={"One input value per line.\nExample:\n5\nAlice"}
+            />
+            <pre className="mt-3 h-[58vh] min-h-[420px] overflow-auto rounded-md border border-[var(--panel-border)] bg-[var(--panel-bg)] p-3 font-mono text-xs text-[var(--text)]">
               {terminalText || "(empty)"}
             </pre>
           </article>
