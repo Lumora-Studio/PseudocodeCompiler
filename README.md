@@ -1,4 +1,4 @@
-# IGCSE Pseudocode Compiler Lab
+# IGCSE Pseudocode Compiler
 
 Strict Cambridge-style pseudocode compiler + runtime with a web UI (Next.js) and desktop packaging (Electron).
 
