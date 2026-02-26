@@ -40,6 +40,10 @@ function splitStdinLines(stdinText: string): string[] {
   return stdinText.replace(/\r/g, "").split("\n");
 }
 
+function sourceUsesInput(sourceText: string): boolean {
+  return /^\s*INPUT\b/im.test(sourceText);
+}
+
 function formatDiagnostics(diagnostics: Diagnostic[]): string {
   if (diagnostics.length === 0) {
     return "";
@@ -98,11 +102,19 @@ export default function HomePage() {
       return;
     }
 
+    const stdinLines = splitStdinLines(stdinText);
+    if (sourceUsesInput(source) && stdinLines.length === 0) {
+      setTerminalText(
+        "Run blocked.\n\nYour pseudocode uses INPUT, but Program Input (stdin) is empty.\nEnter one value per line, then run again.",
+      );
+      return;
+    }
+
     setIsRunning(true);
 
     const runResult = await pythonRunner.run({
       pythonCode: compileResult.pythonCode,
-      stdinLines: splitStdinLines(stdinText),
+      stdinLines,
       virtualFiles: {},
     });
 
@@ -172,7 +184,7 @@ export default function HomePage() {
               value={stdinText}
               onChange={(event) => setStdinText(event.target.value)}
               className="mt-2 h-24 w-full resize-y rounded-md border border-[var(--panel-border)] bg-[var(--panel-bg)] p-3 font-mono text-xs text-[var(--text)] outline-none focus:border-[var(--accent)]"
-              placeholder={"One input value per line.\nExample:\n5\nAlice"}
+              placeholder={"Enter one input value per line.\nThis box is empty by default."}
             />
             <pre className="mt-3 h-[58vh] min-h-[420px] overflow-auto rounded-md border border-[var(--panel-border)] bg-[var(--panel-bg)] p-3 font-mono text-xs text-[var(--text)]">
               {terminalText || "(empty)"}
