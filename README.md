@@ -24,6 +24,7 @@ The home page is a two-pane workspace:
 - Left: Monaco pseudocode editor.
 - Right: terminal output panel.
 - Toolbar actions: `Open Manual`, `Compile`, `Run`, `Clear Terminal`.
+- During `Run`, any `INPUT` request pauses execution and shows an inline terminal prompt (`Send` / `Cancel Run`).
 
 Current persistence behavior:
 
@@ -63,8 +64,9 @@ Compile result includes:
 1. Re-runs compile.
 2. Sends generated Python to `pythonRunner`.
 3. Uses a dedicated Web Worker (`src/workers/pythonRunner.worker.ts`) with Pyodide `v0.27.2`.
-4. Collects `stdout`, `stderr`, runtime diagnostics, and updated virtual file state.
-5. Enforces timeout (default `12s`) and resets worker on timeout/crash.
+4. If runtime asks for input and stdin is exhausted, UI prompts for the next value and re-runs with accumulated inputs.
+5. Collects `stdout`, `stderr`, runtime diagnostics, and updated virtual file state.
+6. Enforces timeout (default `12s`, longer on first run for runtime initialization) and resets worker on timeout/crash.
 
 ## Supported pseudocode language surface
 
@@ -231,6 +233,7 @@ npm run test               # Vitest
 npm run test:watch         # Vitest watch mode
 npm run build              # Next.js production build
 npm run build:electron-web # Static export for Electron
+npm run start              # Start Next.js production server
 npm run pack               # Electron unpacked build
 npm run dist               # Electron DMG build
 ```
@@ -282,6 +285,7 @@ Required secrets:
 ## Notes on current scope
 
 - The runtime supports stdin lines and virtual file maps internally.
-- The home page UI now includes a `Program Input (stdin)` box and executes with those lines.
-- The home page currently still wires runtime execution with empty virtual files by default.
+- The home page uses interactive terminal prompts for `INPUT` instead of a fixed stdin text area.
+- Runs cap interactive `INPUT` requests at `200` to avoid infinite input loops.
+- The home page currently starts runs with an empty virtual file map by default.
 - Additional UI components (`VirtualFilesPanel`, `DiagnosticsPanel`, storage helpers for workspace state) exist in the repo and can be integrated/expanded further.

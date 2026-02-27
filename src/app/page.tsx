@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { compilePseudocode } from "@/compiler";
 import { Diagnostic } from "@/compiler/types";
 import { MonacoPseudocodeEditor } from "@/app/components/MonacoPseudocodeEditor";
@@ -17,7 +17,9 @@ NEXT Number
 OUTPUT "Total = ", Total`;
 
 const SOURCE_STORAGE_KEY = "igcse-editor-source-v2";
-const STDIN_STORAGE_KEY = "igcse-editor-stdin-v1";
+const INPUT_REQUEST_ERROR_TEXT = "INPUT requested but no stdin lines remain";
+const MAX_INTERACTIVE_INPUTS = 200;
+const CURRENT_VERSION = "v0.1.4 alpha";
 
 function getInitialSource() {
   if (typeof window === "undefined") {
@@ -26,22 +28,8 @@ function getInitialSource() {
   return window.localStorage.getItem(SOURCE_STORAGE_KEY) ?? DEFAULT_SOURCE;
 }
 
-function getInitialStdinText() {
-  if (typeof window === "undefined") {
-    return "";
-  }
-  return window.localStorage.getItem(STDIN_STORAGE_KEY) ?? "";
-}
-
-function splitStdinLines(stdinText: string): string[] {
-  if (stdinText.length === 0) {
-    return [];
-  }
-  return stdinText.replace(/\r/g, "").split("\n");
-}
-
-function sourceUsesInput(sourceText: string): boolean {
-  return /^\s*INPUT\b/im.test(sourceText);
+function isInputRequestRuntimeError(stderr: string): boolean {
+  return stderr.includes(INPUT_REQUEST_ERROR_TEXT);
 }
 
 function formatDiagnostics(diagnostics: Diagnostic[]): string {
@@ -58,27 +46,63 @@ function formatDiagnostics(diagnostics: Diagnostic[]): string {
 
 export default function HomePage() {
   const [source, setSource] = useState(getInitialSource);
-  const [stdinText, setStdinText] = useState(getInitialStdinText);
   const [compileDiagnostics, setCompileDiagnostics] = useState<Diagnostic[]>([]);
   const [terminalText, setTerminalText] = useState("Terminal ready. Compile or run your pseudocode.");
+  const [pendingInputLabel, setPendingInputLabel] = useState<string | null>(null);
+  const [pendingInputText, setPendingInputText] = useState("");
   const [isRunning, setIsRunning] = useState(false);
+  const pendingInputResolverRef = useRef<((value: string | null) => void) | null>(null);
 
   useEffect(() => {
     window.localStorage.setItem(SOURCE_STORAGE_KEY, source);
   }, [source]);
 
   useEffect(() => {
-    window.localStorage.setItem(STDIN_STORAGE_KEY, stdinText);
-  }, [stdinText]);
+    return () => {
+      const resolver = pendingInputResolverRef.current;
+      if (!resolver) {
+        return;
+      }
+      pendingInputResolverRef.current = null;
+      resolver(null);
+    };
+  }, []);
 
   const editorDiagnostics = useMemo(() => compileDiagnostics, [compileDiagnostics]);
 
-  const compileNow = () => {
-    const result = compilePseudocode({
+  const resolvePendingInput = (value: string | null) => {
+    const resolver = pendingInputResolverRef.current;
+    if (!resolver) {
+      return;
+    }
+    pendingInputResolverRef.current = null;
+    setPendingInputLabel(null);
+    setPendingInputText("");
+    resolver(value);
+  };
+
+  const waitForTerminalInput = (label: string) => {
+    const existingResolver = pendingInputResolverRef.current;
+    if (existingResolver) {
+      pendingInputResolverRef.current = null;
+      existingResolver(null);
+    }
+    setPendingInputLabel(label);
+    setPendingInputText("");
+    return new Promise<string | null>((resolve) => {
+      pendingInputResolverRef.current = resolve;
+    });
+  };
+
+  const compileSource = () =>
+    compilePseudocode({
       source,
       filename: "main.pseudo",
       strict: true,
     });
+
+  const compileNow = () => {
+    const result = compileSource();
 
     setCompileDiagnostics(result.diagnostics);
 
@@ -97,46 +121,97 @@ export default function HomePage() {
   };
 
   const runNow = async () => {
-    const compileResult = compileNow();
-    if (!compileResult.success || !compileResult.pythonCode) {
-      return;
-    }
+    const compileResult = compileSource();
+    setCompileDiagnostics(compileResult.diagnostics);
 
-    const stdinLines = splitStdinLines(stdinText);
-    if (sourceUsesInput(source) && stdinLines.length === 0) {
-      setTerminalText(
-        "Run blocked.\n\nYour pseudocode uses INPUT, but Program Input (stdin) is empty.\nEnter one value per line, then run again.",
-      );
+    if (!compileResult.success || !compileResult.pythonCode) {
+      setTerminalText(`Compile failed.\n\n${formatDiagnostics(compileResult.diagnostics)}`);
       return;
     }
 
     setIsRunning(true);
+    const stdinLines: string[] = [];
+    const transcript: string[] = ["Program running..."];
+    setTerminalText(transcript.join("\n"));
 
-    const runResult = await pythonRunner.run({
-      pythonCode: compileResult.pythonCode,
-      stdinLines,
-      virtualFiles: {},
-    });
+    try {
+      let runResult = await pythonRunner.run({
+        pythonCode: compileResult.pythonCode,
+        stdinLines: [...stdinLines],
+        virtualFiles: {},
+      });
 
-    const chunks: string[] = [];
-    if (runResult.stdout.trim().length > 0) {
-      chunks.push(`STDOUT:\n${runResult.stdout}`);
-    }
-    if (runResult.stderr.trim().length > 0) {
-      chunks.push(`STDERR:\n${runResult.stderr}`);
-    }
-    if (runResult.diagnostics.length > 0) {
-      chunks.push(`RUNTIME DIAGNOSTICS:\n${formatDiagnostics(runResult.diagnostics)}`);
-    }
-    if (chunks.length === 0) {
-      chunks.push("Program finished with no output.");
-    }
+      while (isInputRequestRuntimeError(runResult.stderr)) {
+        if (stdinLines.length >= MAX_INTERACTIVE_INPUTS) {
+          setTerminalText(
+            [
+              ...transcript,
+              "",
+              `Stopped after ${MAX_INTERACTIVE_INPUTS} INPUT requests to avoid an infinite input loop.`,
+            ].join("\n"),
+          );
+          return;
+        }
 
-    setTerminalText(chunks.join("\n\n"));
-    setIsRunning(false);
+        const inputLabel = `INPUT ${stdinLines.length + 1}`;
+        transcript.push(`${inputLabel}:`);
+        setTerminalText(transcript.join("\n"));
+
+        const nextInput = await waitForTerminalInput(inputLabel);
+        if (nextInput === null) {
+          setTerminalText([...transcript, "", "Run cancelled."].join("\n"));
+          return;
+        }
+
+        stdinLines.push(nextInput);
+        transcript.push(`> ${nextInput}`);
+        setTerminalText(transcript.join("\n"));
+
+        runResult = await pythonRunner.run({
+          pythonCode: compileResult.pythonCode,
+          stdinLines: [...stdinLines],
+          virtualFiles: {},
+        });
+      }
+
+      const chunks: string[] = [];
+      if (runResult.stdout.trim().length > 0) {
+        chunks.push(`STDOUT:\n${runResult.stdout}`);
+      }
+      if (runResult.stderr.trim().length > 0) {
+        chunks.push(`STDERR:\n${runResult.stderr}`);
+      }
+      if (runResult.diagnostics.length > 0) {
+        chunks.push(`RUNTIME DIAGNOSTICS:\n${formatDiagnostics(runResult.diagnostics)}`);
+      }
+      if (chunks.length === 0) {
+        chunks.push("Program finished with no output.");
+      }
+
+      setTerminalText([...transcript, "", ...chunks].join("\n"));
+    } finally {
+      const resolver = pendingInputResolverRef.current;
+      if (resolver) {
+        pendingInputResolverRef.current = null;
+        resolver(null);
+      }
+      setPendingInputLabel(null);
+      setPendingInputText("");
+      setIsRunning(false);
+    }
+  };
+
+  const submitPendingInput = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    resolvePendingInput(pendingInputText);
+  };
+
+  const cancelPendingInput = () => {
+    resolvePendingInput(null);
   };
 
   const clearTerminal = () => {
+    resolvePendingInput(null);
     setTerminalText("");
   };
 
@@ -148,11 +223,14 @@ export default function HomePage() {
           <h1 className="mt-1 text-2xl font-semibold text-[var(--text)] md:text-3xl">
             Editor + Terminal
           </h1>
+          <p className="mt-2 text-xs uppercase tracking-[0.15em] text-[var(--muted)]">
+            Version Tracker: <span className="font-semibold text-[var(--accent-2)]">{CURRENT_VERSION}</span>
+          </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <Link href="/manual" className="ui-button">
               Open Manual
             </Link>
-            <button type="button" className="ui-button" onClick={compileNow}>
+            <button type="button" className="ui-button" onClick={compileNow} disabled={isRunning}>
               Compile
             </button>
             <button type="button" className="ui-button ui-button-primary" onClick={runNow} disabled={isRunning}>
@@ -176,19 +254,35 @@ export default function HomePage() {
 
           <article className="panel rounded-xl p-4">
             <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--muted)]">Terminal</h2>
-            <label htmlFor="stdin-input" className="mt-3 block text-xs uppercase tracking-wider text-[var(--muted)]">
-              Program Input (stdin)
-            </label>
-            <textarea
-              id="stdin-input"
-              value={stdinText}
-              onChange={(event) => setStdinText(event.target.value)}
-              className="mt-2 h-24 w-full resize-y rounded-md border border-[var(--panel-border)] bg-[var(--panel-bg)] p-3 font-mono text-xs text-[var(--text)] outline-none focus:border-[var(--accent)]"
-              placeholder={"Enter one input value per line.\nThis box is empty by default."}
-            />
-            <pre className="mt-3 h-[58vh] min-h-[420px] overflow-auto rounded-md border border-[var(--panel-border)] bg-[var(--panel-bg)] p-3 font-mono text-xs text-[var(--text)]">
+            <pre className="mt-3 h-[52vh] min-h-[360px] overflow-auto rounded-md border border-[var(--panel-border)] bg-[var(--panel-bg)] p-3 font-mono text-xs text-[var(--text)]">
               {terminalText || "(empty)"}
             </pre>
+            {pendingInputLabel ? (
+              <form className="mt-3" onSubmit={submitPendingInput}>
+                <label
+                  htmlFor="terminal-live-input"
+                  className="block text-xs uppercase tracking-wider text-[var(--muted)]"
+                >
+                  {pendingInputLabel}
+                </label>
+                <div className="mt-2 flex gap-2">
+                  <input
+                    id="terminal-live-input"
+                    value={pendingInputText}
+                    onChange={(event) => setPendingInputText(event.target.value)}
+                    autoFocus
+                    className="h-10 w-full rounded-md border border-[var(--panel-border)] bg-[var(--panel-bg)] px-3 font-mono text-xs text-[var(--text)] outline-none focus:border-[var(--accent)]"
+                    placeholder="Type input value and press Enter"
+                  />
+                  <button type="submit" className="ui-button ui-button-primary">
+                    Send
+                  </button>
+                  <button type="button" className="ui-button" onClick={cancelPendingInput}>
+                    Cancel Run
+                  </button>
+                </div>
+              </form>
+            ) : null}
           </article>
         </section>
       </div>
