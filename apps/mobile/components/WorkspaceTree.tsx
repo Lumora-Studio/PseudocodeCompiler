@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Modal,
-  type PointerEvent,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -476,7 +475,7 @@ export function WorkspaceTree({
   );
 
   const capturePointerModifiers = useCallback(
-    (nodeId: string, event: PointerEvent) => {
+    (nodeId: string, event: GestureResponderEvent) => {
       pointerModifiersRef.current = {
         capturedAt: Date.now(),
         nodeId,
@@ -805,10 +804,8 @@ export function WorkspaceTree({
               <Pressable
                 key={node.id}
                 delayLongPress={DRAG_LONG_PRESS_DELAY}
-                onPointerDown={(event) => {
-                  capturePointerModifiers(node.id, event);
-                }}
                 onPressIn={(event) => {
+                  capturePointerModifiers(node.id, event);
                   touchGestureRef.current = {
                     nodeId: node.id,
                     originPageX: event.nativeEvent.pageX,
