@@ -476,13 +476,14 @@ export function WorkspaceTree({
 
   const capturePointerModifiers = useCallback(
     (nodeId: string, event: GestureResponderEvent) => {
+      const nativeEvent = event.nativeEvent as NativeModifierEvent;
       pointerModifiersRef.current = {
         capturedAt: Date.now(),
         nodeId,
         modifiers: {
-          shiftKey: event.nativeEvent.shiftKey,
-          metaKey: event.nativeEvent.metaKey,
-          ctrlKey: event.nativeEvent.ctrlKey,
+          shiftKey: !!nativeEvent.shiftKey,
+          metaKey: !!nativeEvent.metaKey,
+          ctrlKey: !!nativeEvent.ctrlKey,
         },
       };
     },
