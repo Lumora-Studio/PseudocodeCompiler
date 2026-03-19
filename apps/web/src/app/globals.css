@@ -1,0 +1,109 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #1C1C1E;
+  --sidebar: #262628;
+  --titlebar: #323234;
+  --surface: #2C2C2E;
+  --surface2: #3A3A3C;
+  --surface3: #48484A;
+  --separator: #38383A;
+  --text: #FFFFFF;
+  --text2: #98989D;
+  --text3: #636366;
+  --accent: #0A84FF;
+  --green: #30D158;
+  --red: #FF453A;
+  --orange: #FF9F0A;
+  --yellow: #FFD60A;
+  --selected: rgba(10, 132, 255, 0.19);
+  --hover: rgba(255, 255, 255, 0.04);
+  --line-num: #48484A;
+  --traffic-red: #FF5F57;
+  --traffic-yellow: #FEBC2E;
+  --traffic-green: #28C840;
+  --code-keyword: #FC5FA3;
+  --code-variable: #67B7A4;
+  --code-type: #5DD8FF;
+  --code-string: #FC6A5D;
+  --code-number: #D0BF69;
+  --code-operator: #E5E5EA;
+  --code-comment: #6C7986;
+  --code-func: #A167E6;
+  --code-text: #E5E5EA;
+}
+
+html {
+  height: 100%;
+  background: var(--bg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  height: 100%;
+  min-height: 100vh;
+  min-height: 100svh;
+  min-height: 100dvh;
+  color: var(--text);
+  background: var(--bg);
+  font-family: var(--font-sans), "Inter", system-ui, sans-serif;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+  touch-action: manipulation;
+}
+
+button {
+  cursor: pointer;
+}
+
+.app-drag-region {
+  -webkit-app-region: drag;
+}
+
+.app-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+.window-dot {
+  display: inline-flex;
+  height: 12px;
+  width: 12px;
+  border-radius: 999px;
+}
+
+::selection {
+  background: rgba(10, 132, 255, 0.35);
+}
+
+pre,
+textarea,
+code {
+  font-family: var(--font-mono), "Fira Code", monospace;
+}
+
+.monaco-editor .iPadShowKeyboard {
+  right: 12px !important;
+  bottom: 12px !important;
+  left: auto !important;
+  top: auto !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 999px;
+  border: 1px solid var(--separator);
+  background: color-mix(in srgb, var(--surface2) 88%, transparent);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(12px);
+}

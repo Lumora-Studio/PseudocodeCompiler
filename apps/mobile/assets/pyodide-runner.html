@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Pyodide Runner</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #07090d; height: 100%; }
+</style>
+</head>
+<body>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var pyodideInstance = null;
+  var pyodideReady = null;
+  var runtimeReadyNotified = false;
+
+  function postToRN(msg) {
+    if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+      window.ReactNativeWebView.postMessage(JSON.stringify(msg));
+    }
+  }
+
+  function getPyodide() {
+    if (pyodideInstance) return Promise.resolve(pyodideInstance);
+
+    if (!pyodideReady) {
+      pyodideReady = loadPyodide({
+        indexURL: "https://cdn.jsdelivr.net/pyodide/v0.27.2/full/"
+      }).then(function (py) {
+        pyodideInstance = py;
+        return py;
+      });
+    }
+
+    return pyodideReady;
+  }
+
+  function buildDiagnostics(traceback) {
+    if (!traceback || !traceback.trim()) return [];
+    var match = traceback.match(/line (\d+)/);
+    var line = match ? parseInt(match[1], 10) : 1;
+    return [{
+      code: "RUN001",
+      message: traceback.split("\n").slice(-2).join(" ").trim() || "Runtime error",
+      severity: "error",
+      line: line,
+      column: 1,
+      endLine: line,
+      endColumn: 1,
+      hint: "Inspect generated Python and runtime state."
+    }];
+  }
+
+  async function handleRun(id, request) {
+    try {
+      var pyodide = await getPyodide();
+
+      if (!runtimeReadyNotified) {
+        postToRN({ type: "runtime-status", status: "ready" });
+        runtimeReadyNotified = true;
+      }
+
+      pyodide.globals.set("__runner_source", request.pythonCode);
+      pyodide.globals.set("__runner_stdin_json", JSON.stringify(request.stdinLines));
+      pyodide.globals.set("__runner_vfs_json", JSON.stringify(request.virtualFiles));
+
+      var resultProxy = await pyodide.runPythonAsync(
+        'import json\n' +
+        'import traceback\n' +
+        '\n' +
+        '_runtime_stdin = json.loads(__runner_stdin_json)\n' +
+        '_runtime_vfs = json.loads(__runner_vfs_json)\n' +
+        '_runtime_globals = {\n' +
+        '    "__stdin_lines": _runtime_stdin,\n' +
+        '    "__virtual_files": _runtime_vfs,\n' +
+        '}\n' +
+        '_runtime_error = ""\n' +
+        '\n' +
+        'try:\n' +
+        '    exec(__runner_source, _runtime_globals, _runtime_globals)\n' +
+        'except Exception:\n' +
+        '    _runtime_error = traceback.format_exc()\n' +
+        '\n' +
+        '_runtime_out = _runtime_globals.get("__stdout", [])\n' +
+        '_runtime_vfs_out = _runtime_globals.get("__vfs", _runtime_globals.get("__virtual_files", {}))\n' +
+        '{\n' +
+        '    "stdout": "\\n".join(str(value) for value in _runtime_out),\n' +
+        '    "error": _runtime_error,\n' +
+        '    "vfs": {str(name): list(values) for name, values in _runtime_vfs_out.items()},\n' +
+        '}'
+      );
+
+      var resultData = resultProxy.toJs
+        ? resultProxy.toJs({ dict_converter: Object.fromEntries })
+        : resultProxy;
+      if (resultProxy.destroy) resultProxy.destroy();
+
+      var diagnostics = buildDiagnostics(String(resultData.error || ""));
+
+      postToRN({
+        type: "run-result",
+        id: id,
+        result: {
+          success: diagnostics.length === 0,
+          stdout: String(resultData.stdout || ""),
+          stderr: String(resultData.error || ""),
+          diagnostics: diagnostics,
+          virtualFiles: resultData.vfs || {}
+        }
+      });
+    } catch (err) {
+      var message = err instanceof Error ? err.message : "Unknown runner error";
+      postToRN({
+        type: "run-result",
+        id: id,
+        result: {
+          success: false,
+          stdout: "",
+          stderr: message,
+          diagnostics: [{
+            code: "RUN500",
+            message: message,
+            severity: "error",
+            line: 1, column: 1, endLine: 1, endColumn: 1
+          }],
+          virtualFiles: request.virtualFiles
+        }
+      });
+    }
+  }
+
+  function handleMessage(event) {
+    var data;
+    try {
+      data = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
+    } catch (e) { return; }
+
+    if (data.type === "run") {
+      handleRun(data.id, data.request);
+    }
+  }
+
+  document.addEventListener("message", handleMessage);
+  window.addEventListener("message", handleMessage);
+
+  postToRN({ type: "runner-loaded" });
+})();
+</script>
+</body>
+</html>

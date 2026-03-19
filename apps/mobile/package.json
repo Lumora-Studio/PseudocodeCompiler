@@ -1,0 +1,45 @@
+{
+  "name": "@igcse/mobile",
+  "version": "0.1.8",
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "ios": "REACT_NATIVE_PACKAGER_HOSTNAME=127.0.0.1 expo start --ios --host lan",
+    "ios:ipad26": "bash ./scripts/start-ipados26.sh",
+    "ios:preview": "eas build --platform ios --profile preview",
+    "ios:production": "eas build --platform ios --profile production",
+    "ios:testflight": "npx testflight",
+    "android": "expo start --android",
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~55.0.6",
+    "@igcse/compiler": "*",
+    "@igcse/workspace": "*",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "expo": "~55.0.5",
+    "expo-constants": "~55.0.7",
+    "expo-linking": "~55.0.7",
+    "expo-router": "~55.0.4",
+    "expo-status-bar": "~55.0.4",
+    "react": "19.2.3",
+    "react-native": "0.83.2",
+    "react-native-safe-area-context": "~5.6.2",
+    "react-native-screens": "~4.23.0",
+    "react-native-webview": "13.16.0"
+  },
+  "expo": {
+    "install": {
+      "exclude": [
+        "react"
+      ]
+    }
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "eas-cli": "^18.1.0",
+    "typescript": "~5.9.2"
+  },
+  "private": true
+}

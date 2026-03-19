@@ -1,0 +1,55 @@
+{
+  "expo": {
+    "name": "IGCSE Pseudocode Compiler",
+    "slug": "igcse-pseudocode-compiler",
+    "version": "0.1.8",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "scheme": "igcse-compiler",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#07090d"
+    },
+    "ios": {
+      "icon": "./assets/ios-app-icon.icon",
+      "supportsTablet": true,
+      "bundleIdentifier": "com.alex.igcsepseudocodecompiler",
+      "buildNumber": "1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIRequiresFullScreen": true
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#07090d",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-router",
+        {
+          "root": "./app"
+        }
+      ],
+      "./plugins/with-ios-pointer-events"
+    ],
+    "extra": {
+      "router": {
+        "root": "./app"
+      },
+      "eas": {
+        "projectId": "8354f294-b3d0-493b-a7ac-9c72fd2eff75"
+      }
+    }
+  }
+}

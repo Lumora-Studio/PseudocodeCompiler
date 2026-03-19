@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Editor</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; background: #1C1C1E; overscroll-behavior: none; }
+  #editor { width: 100%; height: 100%; }
+  /* Prevent iOS auto-zoom on textarea focus (requires >= 16px) */
+  .monaco-editor textarea { font-size: 16px !important; }
+  .monaco-editor .iPadShowKeyboard {
+    opacity: 0.92;
+    border-color: #38383A;
+    background-color: #2C2C2E;
+    color: #E5E5EA;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+  }
+  .monaco-editor.vs-dark .iPadShowKeyboard {
+    border-color: #38383A;
+    background-color: #2C2C2E;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+  }
+</style>
+</head>
+<body>
+<div id="editor"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.55.0/min/vs/loader.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var TYPE_KEYWORDS = [
+    "INTEGER","REAL","CHAR","STRING","BOOLEAN"
+  ];
+
+  var ROUTINE_KEYWORDS = [
+    "DIV","MOD","LENGTH","LCASE","UCASE","SUBSTRING","ROUND","RANDOM"
+  ];
+
+  var FLOW_KEYWORDS = [
+    "DECLARE","CONSTANT","ARRAY","OF",
+    "INPUT","OUTPUT","IF","THEN","ELSE","ENDIF","CASE","OTHERWISE","ENDCASE",
+    "FOR","TO","STEP","NEXT","REPEAT","UNTIL","WHILE","DO","ENDWHILE",
+    "PROCEDURE","ENDPROCEDURE","FUNCTION","RETURNS","ENDFUNCTION",
+    "CALL","RETURN","OPENFILE","READFILE","WRITEFILE","CLOSEFILE",
+    "READ","WRITE","AND","OR","NOT","TRUE","FALSE"
+  ];
+
+  var KEYWORDS = FLOW_KEYWORDS.concat(TYPE_KEYWORDS).concat(ROUTINE_KEYWORDS);
+
+  var KEYWORD_LOOKUP = {};
+  KEYWORDS.forEach(function (kw) { KEYWORD_LOOKUP[kw.toLowerCase()] = kw; });
+
+  var ROUTINE_SUGGESTIONS = [
+    { label: "DIV(Number, Divisor)", detail: "Integer quotient", insertText: "DIV(${1:Number}, ${2:Divisor})" },
+    { label: "MOD(Number, Divisor)", detail: "Integer remainder", insertText: "MOD(${1:Number}, ${2:Divisor})" },
+    { label: "LENGTH(Text)", detail: "String length", insertText: "LENGTH(${1:Text})" },
+    { label: "LCASE(TextOrChar)", detail: "Lower-case conversion", insertText: "LCASE(${1:TextOrChar})" },
+    { label: "UCASE(TextOrChar)", detail: "Upper-case conversion", insertText: "UCASE(${1:TextOrChar})" },
+    { label: "SUBSTRING(Text, Start, Length)", detail: "Part of a string", insertText: "SUBSTRING(${1:Text}, ${2:Start}, ${3:Length})" },
+    { label: "ROUND(Value, Places)", detail: "Round a real value", insertText: "ROUND(${1:Value}, ${2:Places})" },
+    { label: "RANDOM()", detail: "Random number from 0 to 1 inclusive", insertText: "RANDOM()" }
+  ];
+
+  var editor = null;
+  var monaco = null;
+  var isProgrammaticEdit = false;
+  var isAppleTouchDevice =
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+  function postToRN(msg) {
+    if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+      window.ReactNativeWebView.postMessage(JSON.stringify(msg));
+    }
+  }
+
+  function findCommentStart(line) {
+    var quote = null;
+    for (var i = 0; i < line.length; i++) {
+      var ch = line[i];
+      var next = line[i + 1] || "";
+      if (!quote && ch === "/" && next === "/") return i;
+      if (!quote && (ch === '"' || ch === "'")) { quote = ch; continue; }
+      if (quote && ch === quote) quote = null;
+    }
+    return -1;
+  }
+
+  function uppercaseKeywords(code) {
+    var result = "";
+    var i = 0;
+    var quote = null;
+    while (i < code.length) {
+      var ch = code[i];
+      if (!quote && (ch === '"' || ch === "'")) { quote = ch; result += ch; i++; continue; }
+      if (quote) { result += ch; if (ch === quote) quote = null; i++; continue; }
+      if (/[A-Za-z]/.test(ch)) {
+        var end = i + 1;
+        while (end < code.length && /[A-Za-z0-9]/.test(code[end])) end++;
+        var word = code.slice(i, end);
+        result += KEYWORD_LOOKUP[word.toLowerCase()] || word;
+        i = end;
+        continue;
+      }
+      result += ch;
+      i++;
+    }
+    return result;
+  }
+
+  function autoCorrectLine(line) {
+    var cs = findCommentStart(line);
+    if (cs < 0) return uppercaseKeywords(line);
+    return uppercaseKeywords(line.slice(0, cs)) + line.slice(cs);
+  }
+
+  require.config({
+    paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.55.0/min/vs" }
+  });
+
+  require(["vs/editor/editor.main"], function (_monaco) {
+    monaco = _monaco;
+
+    monaco.languages.register({ id: "igcse-pseudocode" });
+    monaco.languages.setMonarchTokensProvider("igcse-pseudocode", {
+      tokenizer: {
+        root: [
+          [/\/\/.*$/, "comment"],
+          [new RegExp("\\b(" + ROUTINE_KEYWORDS.join("|") + ")\\b"), "predefined"],
+          [new RegExp("\\b(" + TYPE_KEYWORDS.join("|") + ")\\b"), "type"],
+          [new RegExp("\\b(" + FLOW_KEYWORDS.join("|") + ")\\b"), "keyword"],
+          [/\b[0-9]+\.[0-9]+\b/, "number.float"],
+          [/\b[0-9]+\b/, "number"],
+          [/"[^"\n]*"/, "string"],
+          [/'[^'\n]*'/, "string"],
+          [/\u2190|<-/, "operator"],
+          [/<=|>=|<>|=|<|>|\+|-|\*|\/|\^/, "operator"],
+          [/\b[A-Za-z][A-Za-z0-9]*\b/, "identifier"],
+          [/[:,()\[\]]/, "delimiter"]
+        ]
+      }
+    });
+
+    monaco.languages.setLanguageConfiguration("igcse-pseudocode", {
+      brackets: [["(", ")"], ["[", "]"]],
+      autoClosingPairs: [
+        { open: '"', close: '"' },
+        { open: "'", close: "'" },
+        { open: "(", close: ")" },
+        { open: "[", close: "]" }
+      ],
+      surroundingPairs: [
+        { open: '"', close: '"' },
+        { open: "'", close: "'" },
+        { open: "(", close: ")" },
+        { open: "[", close: "]" }
+      ]
+    });
+
+    monaco.languages.registerCompletionItemProvider("igcse-pseudocode", {
+      provideCompletionItems: function (model, position) {
+        var word = model.getWordUntilPosition(position);
+        var range = {
+          startLineNumber: position.lineNumber,
+          endLineNumber: position.lineNumber,
+          startColumn: word.startColumn,
+          endColumn: word.endColumn
+        };
+        return {
+          suggestions: ROUTINE_SUGGESTIONS.map(function (routine, idx) {
+            return {
+              label: routine.label,
+              detail: routine.detail,
+              kind: monaco.languages.CompletionItemKind.Function,
+              insertText: routine.insertText,
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              range: range,
+              sortText: "0_" + String(idx).padStart(3, "0")
+            };
+          }).concat(KEYWORDS.map(function (kw, idx) {
+            return {
+              label: kw,
+              kind: monaco.languages.CompletionItemKind.Keyword,
+              insertText: kw,
+              range: range,
+              sortText: "1_" + String(idx).padStart(3, "0")
+            };
+          }))
+        };
+      }
+    });
+
+    monaco.editor.defineTheme("examLabTheme", {
+      base: "vs-dark",
+      inherit: true,
+      rules: [
+        { token: "keyword", foreground: "FC5FA3" },
+        { token: "type", foreground: "5DD8FF" },
+        { token: "predefined", foreground: "A167E6" },
+        { token: "string", foreground: "FC6A5D" },
+        { token: "comment", foreground: "6C7986", fontStyle: "italic" },
+        { token: "number", foreground: "D0BF69" },
+        { token: "operator", foreground: "E5E5EA" },
+        { token: "identifier", foreground: "67B7A4" },
+        { token: "delimiter", foreground: "E5E5EA" }
+      ],
+      colors: {
+        "editor.background": "#1C1C1E",
+        "editor.foreground": "#E5E5EA",
+        "editorLineNumber.foreground": "#48484A",
+        "editorLineNumber.activeForeground": "#98989D",
+        "editor.lineHighlightBackground": "#2C2C2E",
+        "editorCursor.foreground": "#E5E5EA",
+        "editor.selectionBackground": "#0A84FF30",
+        "editor.inactiveSelectionBackground": "#38383A",
+        "editorIndentGuide.background1": "#38383A",
+        "editorIndentGuide.activeBackground1": "#48484A",
+        "editorWidget.background": "#2C2C2E",
+        "editorSuggestWidget.background": "#2C2C2E",
+        "editorSuggestWidget.selectedBackground": "#0A84FF30"
+      }
+    });
+
+    editor = monaco.editor.create(document.getElementById("editor"), {
+      value: "",
+      language: "igcse-pseudocode",
+      theme: "examLabTheme",
+      editContext: !isAppleTouchDevice,
+      minimap: { enabled: false },
+      fontFamily: "'Fira Code', 'SF Mono', Menlo, monospace",
+      fontSize: 13,
+      lineHeight: 22,
+      lineNumbers: "on",
+      lineNumbersMinChars: 2,
+      roundedSelection: false,
+      automaticLayout: true,
+      renderLineHighlight: "all",
+      scrollBeyondLastLine: false,
+      padding: { top: 10, bottom: 0 },
+      quickSuggestions: { other: true, comments: false, strings: false },
+      scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
+      suggestOnTriggerCharacters: true,
+      acceptSuggestionOnEnter: "off",
+      acceptSuggestionOnCommitCharacter: false,
+      wordBasedSuggestions: "off",
+      snippetSuggestions: "top",
+      tabCompletion: "on"
+    });
+
+    var lastTabAt = 0;
+
+    editor.onKeyDown(function (e) {
+      if (e.browserEvent.key === "Tab") lastTabAt = Date.now();
+
+      var bk = e.browserEvent.key;
+      var bc = e.browserEvent.code;
+      var isQuote = bk === '"' || bk === "'" || (bc === "Quote" && bk !== "Dead");
+      if (isQuote) {
+        var quote = bk === '"' ? '"' : "'";
+        var model = editor.getModel();
+        var sel = editor.getSelection();
+        if (model && sel) {
+          var lineContent = model.getLineContent(sel.positionLineNumber);
+          var charAfter = lineContent[sel.positionColumn - 1] || "";
+          if (sel.isEmpty() && charAfter === quote) {
+            editor.setPosition({ lineNumber: sel.positionLineNumber, column: sel.positionColumn + 1 });
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+          var selectedText = model.getValueInRange(sel);
+          editor.executeEdits("quote-pair", [{
+            range: sel,
+            text: quote + selectedText + quote,
+            forceMoveMarkers: true
+          }]);
+          if (sel.isEmpty()) {
+            editor.setPosition({ lineNumber: sel.positionLineNumber, column: sel.positionColumn + 1 });
+          }
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }
+    });
+
+    editor.onDidChangeModelContent(function (event) {
+      if (isProgrammaticEdit) return;
+
+      var model = editor.getModel();
+      if (!model) return;
+
+      if (event.changes.length === 1) {
+        var change = event.changes[0];
+        if (change.text === "-") {
+          var ln = change.range.startLineNumber;
+          var col = change.range.startColumn;
+          if (col > 1) {
+            var lc = model.getLineContent(ln);
+            if (lc[col - 2] === "<" && lc[col - 1] === "-") {
+              isProgrammaticEdit = true;
+              editor.executeEdits("arrow", [{
+                range: new monaco.Range(ln, col - 1, ln, col + 1),
+                text: "\u2190",
+                forceMoveMarkers: true
+              }]);
+              editor.setPosition({ lineNumber: ln, column: col });
+              isProgrammaticEdit = false;
+            }
+          }
+        }
+      }
+
+      if (Date.now() - lastTabAt > 250) {
+        postToRN({ type: "onChange", value: model.getValue() });
+        return;
+      }
+
+      var affectedLines = {};
+      event.changes.forEach(function (ch) {
+        var insertedCount = ch.text.split(/\r?\n/).length - 1;
+        var endLine = Math.max(ch.range.endLineNumber, ch.range.startLineNumber + insertedCount);
+        for (var l = ch.range.startLineNumber; l <= endLine; l++) {
+          if (l >= 1 && l <= model.getLineCount()) affectedLines[l] = true;
+        }
+      });
+
+      var edits = [];
+      Object.keys(affectedLines).forEach(function (lineStr) {
+        var lineNum = parseInt(lineStr, 10);
+        var lc = model.getLineContent(lineNum);
+        var corrected = autoCorrectLine(lc);
+        if (corrected !== lc) {
+          edits.push({
+            range: new monaco.Range(lineNum, 1, lineNum, model.getLineMaxColumn(lineNum)),
+            text: corrected,
+            forceMoveMarkers: true
+          });
+        }
+      });
+
+      if (edits.length > 0) {
+        var pos = editor.getPosition();
+        isProgrammaticEdit = true;
+        editor.executeEdits("keyword-autocorrect", edits);
+        if (pos) editor.setPosition(pos);
+        isProgrammaticEdit = false;
+      }
+
+      postToRN({ type: "onChange", value: model.getValue() });
+    });
+
+    // iOS/iPadOS: prevent native overscroll and ensure keyboard appears on tap
+    if (isAppleTouchDevice) {
+      function getTouchPosition(target) {
+        var position = target && target.position ? target.position : null;
+        if (!position && target && target.range && typeof target.range.getStartPosition === "function") {
+          position = target.range.getStartPosition();
+        }
+        return position;
+      }
+
+      function setCursorPosition(position) {
+        if (!position) {
+          return false;
+        }
+
+        var selection = new monaco.Selection(
+          position.lineNumber,
+          position.column,
+          position.lineNumber,
+          position.column
+        );
+        editor.setSelection(selection);
+        return true;
+      }
+
+      function getInputAreaElement() {
+        var domNode = editor.getDomNode();
+        return domNode ? domNode.querySelector('.inputarea') : null;
+      }
+
+      function isClientPointInsideEditor(clientX, clientY) {
+        var domNode = editor.getDomNode();
+        if (!domNode) {
+          return false;
+        }
+
+        var rect = domNode.getBoundingClientRect();
+        return (
+          clientX >= rect.left &&
+          clientX <= rect.right &&
+          clientY >= rect.top &&
+          clientY <= rect.bottom
+        );
+      }
+
+      function placeCursorAtClientPoint(clientX, clientY) {
+        if (!isClientPointInsideEditor(clientX, clientY)) {
+          return false;
+        }
+
+        if (typeof editor.getTargetAtClientPoint !== "function") {
+          return false;
+        }
+
+        var inputArea = getInputAreaElement();
+        var previousPointerEvents = inputArea ? inputArea.style.pointerEvents : "";
+
+        if (inputArea) {
+          inputArea.style.pointerEvents = "none";
+        }
+
+        try {
+          var target = editor.getTargetAtClientPoint(clientX, clientY);
+          return setCursorPosition(getTouchPosition(target));
+        } finally {
+          if (inputArea) {
+            inputArea.style.pointerEvents = previousPointerEvents;
+          }
+        }
+      }
+
+      var activeTouch = null;
+      var domNode = editor.getDomNode();
+      if (domNode) {
+        domNode.addEventListener('mousedown', function(e) {
+          if (e.button !== 0) {
+            return;
+          }
+
+          placeCursorAtClientPoint(e.clientX, e.clientY);
+          editor.focus();
+        }, true);
+
+        domNode.addEventListener('touchstart', function(e) {
+          if (!e.touches || e.touches.length !== 1) {
+            activeTouch = null;
+            return;
+          }
+
+          var touch = e.touches[0];
+          activeTouch = {
+            identifier: touch.identifier,
+            clientX: touch.clientX,
+            clientY: touch.clientY
+          };
+
+          placeCursorAtClientPoint(touch.clientX, touch.clientY);
+          editor.focus();
+        }, { passive: true });
+
+        domNode.addEventListener('touchend', function(e) {
+          if (!activeTouch || !e.changedTouches) {
+            activeTouch = null;
+            return;
+          }
+
+          var touch = null;
+          for (var i = 0; i < e.changedTouches.length; i++) {
+            if (e.changedTouches[i].identifier === activeTouch.identifier) {
+              touch = e.changedTouches[i];
+              break;
+            }
+          }
+
+          if (!touch) {
+            activeTouch = null;
+            return;
+          }
+
+          var deltaX = Math.abs(touch.clientX - activeTouch.clientX);
+          var deltaY = Math.abs(touch.clientY - activeTouch.clientY);
+          var isTap = deltaX < 12 && deltaY < 12;
+
+          if (isTap) {
+            var targetClientX = touch.clientX;
+            var targetClientY = touch.clientY;
+            window.requestAnimationFrame(function () {
+              placeCursorAtClientPoint(targetClientX, targetClientY);
+              editor.focus();
+            });
+          }
+
+          activeTouch = null;
+        }, { passive: true });
+
+        domNode.addEventListener('touchcancel', function() {
+          activeTouch = null;
+        }, { passive: true });
+      }
+
+      document.body.addEventListener('touchmove', function(e) {
+        if (!e.target.closest('.monaco-scrollable-element')) {
+          e.preventDefault();
+        }
+      }, { passive: false });
+
+      // Expand Monaco's hidden textarea so taps count as direct interaction
+      // with a text input inside WKWebView. This keeps the keyboard usable on
+      // iPhone/iPad even when programmatic focus is ignored by iOS.
+      var appleInputFix = document.createElement('style');
+      appleInputFix.textContent =
+        '.monaco-editor .inputarea { ' +
+          'position: absolute !important; ' +
+          'top: 0 !important; ' +
+          'left: 0 !important; ' +
+          'right: 0 !important; ' +
+          'bottom: 0 !important; ' +
+          'width: 100% !important; ' +
+          'height: 100% !important; ' +
+          'opacity: 0 !important; ' +
+          'font-size: 16px !important; ' +
+          'z-index: 5 !important; ' +
+        '}';
+      document.head.appendChild(appleInputFix);
+    }
+
+    postToRN({ type: "ready" });
+  });
+
+  function handleMessage(event) {
+    var data;
+    try {
+      data = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
+    } catch (e) { return; }
+
+    if (!editor || !monaco) return;
+
+    if (data.type === "setValue") {
+      isProgrammaticEdit = true;
+      editor.setValue(data.value || "");
+      isProgrammaticEdit = false;
+    }
+
+    if (data.type === "setDiagnostics") {
+      var model = editor.getModel();
+      if (!model) return;
+      var markers = (data.markers || []).map(function (d) {
+        return {
+          startLineNumber: d.line,
+          startColumn: d.column,
+          endLineNumber: d.endLine,
+          endColumn: Math.max(d.endColumn + 1, d.column + 1),
+          message: d.code + ": " + d.message + (d.hint ? "\nHint: " + d.hint : ""),
+          severity: d.severity === "error" ? 8 : d.severity === "warning" ? 4 : 2
+        };
+      });
+      monaco.editor.setModelMarkers(model, "igcse-compiler", markers);
+    }
+  }
+
+  document.addEventListener("message", handleMessage);
+  window.addEventListener("message", handleMessage);
+})();
+</script>
+</body>
+</html>

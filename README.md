@@ -1,76 +1,99 @@
 # IGCSE Pseudocode Compiler
 
-Strict Cambridge-style pseudocode compiler + runtime with a web UI (Next.js) and desktop packaging (Electron).
+Strict Cambridge-style pseudocode compiler and runtime in a JavaScript monorepo. The project validates exam-style pseudocode, transpiles it to Python, and executes it with Pyodide on the web and on mobile.
 
-This project takes IGCSE-like pseudocode, validates it, transpiles it to Python, and executes it in-browser through Pyodide running inside a Web Worker.
+The repo currently ships:
 
-## What this app does
+- A web app built with Next.js
+- A macOS desktop shell built with Electron
+- A mobile app built with Expo / React Native
+- A shared compiler package
+- A shared workspace model and persistence package
 
-- Edits pseudocode in a Monaco-based editor with custom language support.
-- Enforces strict keyword casing and statement forms expected in IGCSE-style pseudocode.
-- Produces syntax + semantic diagnostics with exact line/column spans.
-- Transpiles accepted pseudocode programs into Python code.
-- Runs transpiled Python in a sandboxed browser worker, captures stdout/stderr, and surfaces runtime diagnostics.
-- Ships both as:
-1. A web app (`next dev` / `next build`)
-2. A macOS desktop app (`electron-builder` DMG output)
+## Monorepo layout
 
-## Detailed application behavior
+```text
+apps/
+  web/                   # Next.js app + Electron desktop packaging
+  mobile/                # Expo / React Native app
+packages/
+  compiler/              # Shared tokenizer, parser, semantics, codegen
+  workspace/             # Shared workspace state, layout, panels, persistence helpers
+```
 
-### Main screen (`/`)
+## Current product surface
 
-The home page is a two-pane workspace:
+### Shared compiler (`@igcse/compiler`)
 
-- Left: Monaco pseudocode editor.
-- Right: terminal output panel.
-- Toolbar actions: `Open Manual`, `Compile`, `Run`, `Clear Terminal`.
-- During `Run`, any `INPUT` request pauses execution and shows an inline terminal prompt (`Send` / `Cancel Run`).
+- Tokenizes, parses, and semantically validates strict pseudocode
+- Emits structured diagnostics with codes such as `SYNxxx`, `SEMxxx`, and `RUNxxx`
+- Generates Python for successful programs
+- Is consumed by both the web app and the mobile app
 
-Current persistence behavior:
+### Shared workspace model (`@igcse/workspace`)
 
-- Source code is saved to `localStorage` under `igcse-editor-source-v2`.
-- On reload, source is restored from local storage (or a default sample program).
+- Models folders, documents, active tabs, compile summaries, terminal/files panels, and layout state
+- Supports folder and document creation, rename, delete, move, and reorder
+- Stores virtual files used by `OPENFILE`, `READFILE`, `WRITEFILE`, and `CLOSEFILE`
+- Handles persisted workspace migration between schema versions
 
-### Manual screen (`/manual`)
+### Web app (`@igcse/web`)
 
-The manual page is an in-app study/reference guide with:
+The current web UI is a workspace shell rather than the older single-file editor:
 
-- Command word glossary.
-- Loop and algorithm patterns.
-- Worked pseudocode examples.
-- Notes aligned to Cambridge IGCSE 0478 (2026-2028 context in content).
+- Explorer sidebar with folders and multiple pseudocode documents
+- Monaco-based pseudocode editor
+- Breadcrumbs, terminal output, inline runtime `INPUT` prompts, and save/error notices
+- Rename, delete, move, and drag/drop interactions in the explorer
+- A built-in `/manual` reference page for Cambridge 0478 pseudocode guidance
+- Touch-first layouts for iPad-style and phone-style browser sessions
 
-### Compile flow
+Persistence on the web uses IndexedDB (`igcse-pseudocode-workspace`) with migration from older localStorage keys.
 
-`compilePseudocode()` performs:
+### Desktop shell
 
-1. Tokenization (`src/compiler/tokenizer.ts`)
-2. Parsing to AST (`src/compiler/parser.ts`)
-3. Semantic analysis (`src/compiler/semantics.ts`)
-4. Diagnostic merge/sort by position
-5. Python code generation if no `error` diagnostics (`src/compiler/codegen.ts`)
+- Electron wraps the web app for local desktop use
+- Production desktop builds package the statically exported web app
+- Current packaging is configured for macOS DMG output
 
-Compile result includes:
+### Mobile app (`@igcse/mobile`)
 
-- `success`
-- `diagnostics[]`
-- `astJson`
-- `pythonCode` (when successful)
+The mobile app is an Expo / React Native shell with:
 
-### Run flow
+- A WebView-based Monaco editor using `apps/mobile/assets/editor.html`
+- A WebView-based Pyodide runner using `apps/mobile/assets/pyodide-runner.html`
+- Workspace tree, output panel, and manual screen
+- AsyncStorage-backed persistence
+- A seeded starter workspace on first launch with `layout.pseudo`, `page.pseudo`, and starter folders such as `src/app`
 
-`Run` on the home page:
+The Expo app is configured for iPhone and iPad, and includes EAS profiles for preview and production iOS builds.
 
-1. Re-runs compile.
-2. Sends generated Python to `pythonRunner`.
-3. Uses a dedicated Web Worker (`src/workers/pythonRunner.worker.ts`) with Pyodide `v0.27.2`.
-4. If runtime asks for input and stdin is exhausted, UI prompts for the next value and re-runs with accumulated inputs.
-5. Collects `stdout`, `stderr`, runtime diagnostics, and updated virtual file state.
-6. Enforces timeout (default `12s`, longer on first run for runtime initialization) and resets worker on timeout/crash.
+## Compile and run flow
 
-## Supported pseudocode language surface
+`compilePseudocode()` performs the shared compiler pipeline:
 
-Implemented statement categories include:
+1. Tokenization
+2. Parsing into an AST
+3. Semantic analysis
+4. Diagnostic merge/sort
+5. Python code generation when there are no error diagnostics
+
+Runtime execution differs by platform:
+
+- Web: generated Python runs inside `apps/web/src/workers/pythonRunner.worker.ts`
+- Mobile: generated Python runs inside the hidden Pyodide WebView runner
+
+Current runtime behavior:
+
+- `Run` recompiles the active document before execution
+- `INPUT` is handled interactively from the terminal UI
+- Virtual files are passed into the runtime and returned after execution
+- Execution uses a `12s` default timeout and a longer first-run initialization timeout
+- Worker/WebView failures are surfaced as runtime diagnostics instead of crashing the UI
+
+## Supported pseudocode surface
+
+The compiler currently supports:
 
 - Declarations and constants: `DECLARE`, `CONSTANT`
 - Assignment and IO: `<-` or `←`, `INPUT`, `OUTPUT`
@@ -78,174 +101,141 @@ Implemented statement categories include:
 - Iteration: `FOR/TO/STEP/NEXT`, `WHILE/DO/ENDWHILE`, `REPEAT/UNTIL`
 - Routines: `PROCEDURE/ENDPROCEDURE`, `FUNCTION/RETURNS/ENDFUNCTION`, `CALL`, `RETURN`
 - File operations: `OPENFILE`, `READFILE`, `WRITEFILE`, `CLOSEFILE`
-- Arrays: declared bounds with 1D or 2D index dimensions
+- Arrays with declared bounds, including 2D arrays
 - Built-ins: `DIV`, `MOD`, `LENGTH`, `LCASE`, `UCASE`, `SUBSTRING`, `ROUND`, `RANDOM`
 - Boolean operators and literals: `AND`, `OR`, `NOT`, `TRUE`, `FALSE`
+- Line comments starting with `//`
 
-Strictness behavior:
+Strict mode behavior:
 
-- Keywords must be uppercase in strict mode.
-- Diagnostics use structured codes (`SYNxxx`, `SEMxxx`, `RUNxxx`).
-
-## Monaco editor integration
-
-The custom editor component (`src/app/components/MonacoPseudocodeEditor.tsx`) adds:
-
-- Custom language tokenization and theming.
-- Keyword autocomplete and quick snippets.
-- Auto-correction of keyword casing outside string/comment literals.
-- Auto-conversion of `<-` to `←`.
-- Quote-pair handling and marker updates from compiler diagnostics.
-
-## Runtime model (Python side)
-
-Generated Python includes a prelude that emulates pseudocode behaviors:
-
-- `__PseudoArray` class with declared bound checks.
-- `__input()` / `__output()` runtime helpers.
-- Emulated file API over in-memory virtual files (`__vfs`).
-- Utility built-ins mapped to pseudocode built-ins.
-- Inclusive range helper for `FOR ... TO ... STEP ...`.
-
-Execution happens in a worker to keep the UI responsive and isolate crashes/timeouts.
+- Keywords are expected in uppercase
+- Compiler diagnostics are line/column aware
+- The editors auto-correct keyword casing outside strings/comments and convert `<-` to `←`
 
 ## Tech stack
 
-Core app:
+- TypeScript
+- npm workspaces
+- Next.js App Router
+- React 19
+- Tailwind CSS 4
+- Monaco Editor
+- Electron
+- Expo / React Native
+- Pyodide
+- Vitest
 
-- Next.js `16.1.6` (App Router)
-- React `19.2.3`
-- TypeScript `5`
-- Tailwind CSS `4` (global styles + utility support)
-- Monaco Editor (`@monaco-editor/react` + `monaco-editor`)
-
-Compiler/runtime:
-
-- Custom tokenizer/parser/semantic analyzer/code generator in TypeScript
-- Pyodide (loaded from CDN in worker) for Python execution
-
-Desktop packaging:
-
-- Electron `37`
-- electron-builder `26` (macOS DMG target)
-- `serve-handler` for serving static export in packaged app
-
-Quality/tooling:
-
-- ESLint `9` + `eslint-config-next`
-- Vitest `4` + Testing Library + jsdom
-- `tsc --noEmit` for type checks
-- `concurrently`, `wait-on`, `cross-env` for dev/build orchestration
-
-## How this is built
-
-### Development mode
-
-`npm run dev` starts both:
-
-1. Next.js dev server (`npm run dev:web`)
-2. Electron pointed at `http://localhost:3000` (`npm run dev:electron`)
-
-So local development behaves like the desktop app while still using hot-reload web tooling.
-
-### Production web build
-
-`npm run build` performs a standard Next.js production build.
-
-### Electron build path
-
-`npm run build:electron-web` sets `BUILD_TARGET=electron`, making Next config export static output (`out/`).
-
-Packaged Electron app then:
-
-- Starts a local internal HTTP server for `out/`
-- Loads that URL in `BrowserWindow`
-- Produces DMG artifact via `npm run dist`
-
-## Project structure
-
-```text
-src/
-  app/
-    page.tsx                   # Main editor + terminal UI
-    manual/page.tsx            # In-app learning manual
-    components/
-      MonacoPseudocodeEditor.tsx
-      pseudocodeAutocorrect.ts
-      DiagnosticsPanel.tsx
-      VirtualFilesPanel.tsx
-  compiler/
-    tokenizer.ts
-    parser.ts
-    semantics.ts
-    codegen.ts
-    index.ts                   # compilePseudocode entrypoint
-    types.ts
-  runtime/
-    executePython.ts           # Worker manager + timeout handling
-  workers/
-    pythonRunner.worker.ts     # Pyodide execution environment
-electron/
-  main.cjs
-  preload.cjs
-scripts/
-  deploy.sh
-.github/workflows/
-  vercel-preview.yml
-  vercel-production.yml
-```
-
-## Setup
+## Getting started
 
 Prerequisites:
 
-- Node.js 20+ recommended
+- Node.js 20 or newer
 - npm
-- macOS required for DMG packaging
 
-Install:
+Install dependencies from the repo root:
 
 ```bash
 npm install
 ```
 
-Run in dev (web + Electron):
+## Running the apps
 
-```bash
-npm run dev
-```
+### Web only
 
-Run web only:
+From the repo root:
 
 ```bash
 npm run dev:web
 ```
 
-## Scripts
+### Web + Electron desktop shell
+
+From the repo root:
 
 ```bash
-npm run dev                # Web + Electron (local desktop workflow)
-npm run dev:web            # Next.js dev server only
-npm run dev:electron       # Electron against local web server
-npm run lint               # ESLint
-npm run typecheck          # TypeScript checks
-npm run test               # Vitest
-npm run test:watch         # Vitest watch mode
-npm run build              # Next.js production build
-npm run build:electron-web # Static export for Electron
-npm run start              # Start Next.js production server
-npm run pack               # Electron unpacked build
-npm run dist               # Electron DMG build
+npm run dev
 ```
+
+This starts the Next.js dev server and then launches Electron against `http://localhost:3000`.
+
+### Production web build
+
+From the repo root:
+
+```bash
+npm run build
+```
+
+### Desktop packaging
+
+From `apps/web`:
+
+```bash
+npm run dist   # macOS DMG
+npm run pack   # unpacked Electron app
+```
+
+### Mobile development
+
+From the repo root:
+
+```bash
+npm run --workspace=@igcse/mobile start
+npm run --workspace=@igcse/mobile ios
+npm run --workspace=@igcse/mobile android
+npm run --workspace=@igcse/mobile web
+```
+
+Root-level convenience scripts currently exposed for mobile are:
+
+```bash
+npm run ios:ipad26
+npm run ios:preview
+npm run ios:production
+npm run ios:testflight
+```
+
+Mobile prerequisites:
+
+- macOS + Xcode for iOS/iPadOS simulator work
+- Android Studio for Android emulator work
+- Expo / EAS account for preview or production iOS builds
+
+## Root scripts
+
+From the repo root:
+
+```bash
+npm run dev
+npm run dev:web
+npm run build
+npm run test
+npm run test:compiler
+npm run test:web
+npm run typecheck
+npm run typecheck:mobile
+npm run lint
+npm run ios:ipad26
+npm run ios:preview
+npm run ios:production
+npm run ios:testflight
+```
+
+Notes:
+
+- `npm run build` builds the web workspace
+- `npm run lint` runs only in workspaces that define a lint script
+- `npm run test` and `npm run typecheck` fan out across workspaces with matching scripts
 
 ## Testing
 
-Current automated tests cover:
+Current automated coverage in the repo includes:
 
-- Compiler happy path and selected failure paths (`src/compiler/compiler.test.ts`)
-- Pseudocode keyword auto-correction behavior (`src/app/components/pseudocodeAutocorrect.test.ts`)
+- Compiler tests in `packages/compiler/src/compiler.test.ts`
+- Workspace model tests in `packages/workspace/src/index.test.ts`
+- Web app tests for the sidebar, editor autocorrect, storage helpers, Apple touch detection, and the main page
 
-Run all tests:
+Run everything with:
 
 ```bash
 npm run test
@@ -253,39 +243,55 @@ npm run test
 
 ## Deployment
 
-### Scripted preview deploy
+### Web deployment
 
-This repository includes a deployment helper:
+The repo contains GitHub Actions workflows for Vercel:
 
-```bash
-bash scripts/deploy.sh
-```
+- `.github/workflows/vercel-preview.yml`
+- `.github/workflows/vercel-production.yml`
 
-It packages and deploys via the claimable-preview endpoint.
-
-### GitHub Actions
-
-- Preview deploys: `.github/workflows/vercel-preview.yml`
-  Trigger: non-`main` pushes + pull requests
-- Production deploys: `.github/workflows/vercel-production.yml`
-  Trigger: pushes to `main`
-
-Both workflows run:
+Both workflows currently run:
 
 - `npm run lint`
 - `npm run test`
 - `npm run build`
 
-Required secrets:
+Required Vercel secrets:
 
 - `VERCEL_TOKEN`
 - `VERCEL_ORG_ID`
 - `VERCEL_PROJECT_ID`
 
-## Notes on current scope
+### Mobile iOS / iPadOS release flow
 
-- The runtime supports stdin lines and virtual file maps internally.
-- The home page uses interactive terminal prompts for `INPUT` instead of a fixed stdin text area.
-- Runs cap interactive `INPUT` requests at `200` to avoid infinite input loops.
-- The home page currently starts runs with an empty virtual file map by default.
-- Additional UI components (`VirtualFilesPanel`, `DiagnosticsPanel`, storage helpers for workspace state) exist in the repo and can be integrated/expanded further.
+The mobile app is configured with EAS build profiles in `apps/mobile/eas.json`:
+
+- `preview` for internal simulator builds
+- `production` for App Store / TestFlight builds
+
+Useful commands:
+
+```bash
+npm run ios:preview
+npm run ios:production
+npm run ios:testflight
+```
+
+Current Expo / iOS config includes:
+
+- Bundle identifier: `com.alex.igcsepseudocodecompiler`
+- Tablet support enabled
+- `ITSAppUsesNonExemptEncryption: false`
+
+## Persistence notes
+
+- Web storage: IndexedDB, with migration from older localStorage snapshots
+- Mobile storage: AsyncStorage
+- Shared workspace schema version: `2`
+- Mobile storage key: `igcse-workspace-v3`
+
+## Scope notes
+
+- The shared workspace package already supports panel layout metadata, terminal/files panels, and virtual files
+- The current web UI primarily surfaces the explorer, editor, manual, and terminal workflow
+- The desktop app is an Electron wrapper around the web workspace, not a separate codebase

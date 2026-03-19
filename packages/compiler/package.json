@@ -1,0 +1,25 @@
+{
+  "name": "@igcse/compiler",
+  "version": "0.1.8",
+  "private": true,
+  "description": "IGCSE pseudocode compiler core — tokenizer, parser, semantics, and Python code generation.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./types": "./src/types.ts",
+    "./tokenizer": "./src/tokenizer.ts",
+    "./parser": "./src/parser.ts",
+    "./semantics": "./src/semantics.ts",
+    "./codegen": "./src/codegen.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "vitest": "^4.0.18"
+  }
+}
