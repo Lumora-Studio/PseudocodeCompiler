@@ -11,9 +11,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import {
-  SafeAreaView,
   useSafeAreaInsets,
-  type Edge,
 } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
@@ -226,13 +224,11 @@ export default function EditorScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
-  const rootMinHeight = height;
   const shortestSide = Math.min(width, height);
   const platformWithPad = Platform as typeof Platform & { isPad?: boolean };
   const isTabletLayout =
     (Platform.OS === "ios" && platformWithPad.isPad === true) ||
     shortestSide >= 744;
-  const safeAreaEdges: readonly Edge[] = ["top", "left", "right"];
 
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
@@ -299,26 +295,11 @@ export default function EditorScreen() {
   }, [breadcrumbs]);
 
   const phoneTabBarBottomPadding = Math.max(insets.bottom, 21);
-  const bannerHeight = saveError ? 28 : 0;
-  const tabletBodyHeight = Math.max(
-    rootMinHeight -
-      insets.top -
-      dimensions.tabletTopBarHeight -
-      StyleSheet.hairlineWidth -
-      bannerHeight,
-    0,
-  );
-  const tabletDockHeight = isOutputVisible
-    ? dimensions.tabletOutputHeight
-    : dimensions.collapsedOutputHeight;
-  const tabletEditorHeight = Math.max(
-    tabletBodyHeight -
-      dimensions.tabletBreadcrumbHeight -
-      StyleSheet.hairlineWidth -
-      StyleSheet.hairlineWidth -
-      tabletDockHeight,
-    0,
-  );
+  const rootInsetStyle = {
+    paddingTop: insets.top,
+    paddingLeft: insets.left,
+    paddingRight: insets.right,
+  } as const;
 
   const handleRun = async () => {
     await runCurrent();
@@ -332,11 +313,11 @@ export default function EditorScreen() {
 
   if (!workspace || !activeDocument) {
     return (
-      <SafeAreaView style={[styles.safe, { minHeight: rootMinHeight }]} edges={safeAreaEdges}>
+      <View style={[styles.safe, rootInsetStyle]}>
         <View style={styles.loadingWrap}>
           <Text style={styles.loadingText}>Loading…</Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
@@ -352,8 +333,8 @@ export default function EditorScreen() {
   );
 
   return (
-    <SafeAreaView style={[styles.safe, { minHeight: rootMinHeight }]} edges={safeAreaEdges}>
-      <View style={[styles.screen, { minHeight: rootMinHeight }]}>
+    <View style={[styles.safe, rootInsetStyle]}>
+      <View style={styles.screen}>
         {isTabletLayout ? (
           <>
             <View style={styles.tabletNavBar}>
@@ -393,16 +374,13 @@ export default function EditorScreen() {
               </View>
             ) : null}
 
-            <View style={[styles.tabletBody, { height: tabletBodyHeight }]}>
+            <View style={styles.tabletBody}>
               {isSidebarVisible ? (
                 <>
                   <View
                     style={[
                       styles.sidebarShell,
-                      {
-                        height: tabletBodyHeight,
-                        width: dimensions.tabletSidebarWidth,
-                      },
+                      { width: dimensions.tabletSidebarWidth },
                     ]}
                   >
                     <WorkspaceTree
@@ -420,7 +398,7 @@ export default function EditorScreen() {
                 </>
               ) : null}
 
-              <View style={[styles.tabletEditorArea, { height: tabletBodyHeight }]}>
+              <View style={styles.tabletEditorArea}>
                 <View style={styles.breadcrumbBar}>
                   {(visibleBreadcrumbs.length > 0
                     ? visibleBreadcrumbs
@@ -448,7 +426,7 @@ export default function EditorScreen() {
                 </View>
                 <View style={styles.divider} />
 
-                <View style={[styles.editorPanel, { height: tabletEditorHeight }]}>
+                <View style={styles.editorPanel}>
                   <EditorWebView
                     initialValue={activeDocument.source}
                     onChange={updateActiveDocumentSource}
@@ -597,7 +575,7 @@ export default function EditorScreen() {
           allowUniversalAccessFromFileURLs
         />
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -605,15 +583,11 @@ const styles = StyleSheet.create({
   safe: {
     flex: 1,
     width: "100%",
-    flexBasis: 0,
-    minHeight: 0,
     backgroundColor: colors.bg,
   },
   screen: {
     flex: 1,
     width: "100%",
-    flexBasis: 0,
-    minHeight: 0,
     backgroundColor: colors.bg,
   },
   loadingWrap: {
@@ -707,6 +681,7 @@ const styles = StyleSheet.create({
   tabletBody: {
     flex: 1,
     flexDirection: "row",
+    alignSelf: "stretch",
     minHeight: 0,
   },
   sidebarShell: {
@@ -789,6 +764,7 @@ const styles = StyleSheet.create({
   },
   tabletEditorArea: {
     flex: 1,
+    alignSelf: "stretch",
     minWidth: 0,
     minHeight: 0,
     backgroundColor: colors.bg,
