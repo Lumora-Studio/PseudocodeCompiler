@@ -8,7 +8,6 @@
 </style>
 </head>
 <body>
-<script src="https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js"></script>
 <script>
 (function () {
   "use strict";
@@ -16,6 +15,8 @@
   var pyodideInstance = null;
   var pyodideReady = null;
   var runtimeReadyNotified = false;
+  var loaderReady = null;
+  var PYODIDE_INDEX_URL = "https://cdn.jsdelivr.net/pyodide/v0.27.2/full/";
 
   function postToRN(msg) {
     if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
@@ -23,16 +24,73 @@
     }
   }
 
+  function reportRuntimeFailure(message) {
+    postToRN({
+      type: "runtime-status",
+      status: "failed",
+      message: message
+    });
+  }
+
+  function ensurePyodideLoader() {
+    if (typeof loadPyodide === "function") {
+      return Promise.resolve();
+    }
+
+    if (!loaderReady) {
+      loaderReady = fetch(PYODIDE_INDEX_URL + "pyodide.js")
+        .then(function (response) {
+          if (!response.ok) {
+            throw new Error("Failed to fetch the Pyodide bootstrap script.");
+          }
+
+          return response.text();
+        })
+        .then(function (source) {
+          (0, eval)(
+            source + "\n//# sourceURL=" + PYODIDE_INDEX_URL + "pyodide.js"
+          );
+
+          if (typeof loadPyodide !== "function") {
+            throw new Error("Pyodide loader script did not expose loadPyodide.");
+          }
+        })
+        .catch(function (err) {
+          loaderReady = null;
+          throw err;
+        });
+    }
+
+    return loaderReady;
+  }
+
   function getPyodide() {
     if (pyodideInstance) return Promise.resolve(pyodideInstance);
 
     if (!pyodideReady) {
-      pyodideReady = loadPyodide({
-        indexURL: "https://cdn.jsdelivr.net/pyodide/v0.27.2/full/"
-      }).then(function (py) {
-        pyodideInstance = py;
-        return py;
-      });
+      pyodideReady = ensurePyodideLoader()
+        .then(function () {
+          return loadPyodide({
+            indexURL: PYODIDE_INDEX_URL
+          });
+        })
+        .then(function (py) {
+          pyodideInstance = py;
+          if (!runtimeReadyNotified) {
+            postToRN({ type: "runtime-status", status: "ready" });
+            runtimeReadyNotified = true;
+          }
+          return py;
+        })
+        .catch(function (err) {
+          pyodideReady = null;
+          reportRuntimeFailure(
+            err instanceof Error
+              ? err.message
+              : "Python runtime failed to initialize."
+          );
+          throw err;
+        });
     }
 
     return pyodideReady;
@@ -57,11 +115,6 @@
   async function handleRun(id, request) {
     try {
       var pyodide = await getPyodide();
-
-      if (!runtimeReadyNotified) {
-        postToRN({ type: "runtime-status", status: "ready" });
-        runtimeReadyNotified = true;
-      }
 
       pyodide.globals.set("__runner_source", request.pythonCode);
       pyodide.globals.set("__runner_stdin_json", JSON.stringify(request.stdinLines));
@@ -147,6 +200,9 @@
   window.addEventListener("message", handleMessage);
 
   postToRN({ type: "runner-loaded" });
+  getPyodide().catch(function () {
+    // Later runs retry initialization and surface errors via run-result.
+  });
 })();
 </script>
 </body>

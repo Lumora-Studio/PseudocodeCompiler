@@ -8,13 +8,14 @@ import {
   Text,
   TouchableOpacity,
   View,
-  useWindowDimensions,
 } from "react-native";
 import {
+  useSafeAreaFrame,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
+import * as ScreenOrientation from "expo-screen-orientation";
 import { WebView } from "react-native-webview";
 import { EditorWebView } from "../components/EditorWebView";
 import { Terminal } from "../components/Terminal";
@@ -223,7 +224,8 @@ function PhoneTabBar({
 export default function EditorScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width, height } = useWindowDimensions();
+  const frame = useSafeAreaFrame();
+  const { width, height } = frame;
   const shortestSide = Math.min(width, height);
   const platformWithPad = Platform as typeof Platform & { isPad?: boolean };
   const isTabletLayout =
@@ -262,6 +264,18 @@ export default function EditorScreen() {
   } = useCompilerWorkspace();
 
   useEffect(() => {
+    if (!isTabletLayout) {
+      return;
+    }
+
+    void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+
+    return () => {
+      void ScreenOrientation.unlockAsync();
+    };
+  }, [isTabletLayout]);
+
+  useEffect(() => {
     const handleKeyboardShow = () => setIsKeyboardVisible(true);
     const handleKeyboardHide = () => setIsKeyboardVisible(false);
 
@@ -295,10 +309,18 @@ export default function EditorScreen() {
   }, [breadcrumbs]);
 
   const phoneTabBarBottomPadding = Math.max(insets.bottom, 21);
+  const screenHeight = height - insets.top - insets.bottom;
+  const tabletBodyHeight = Math.max(
+    0,
+    screenHeight - dimensions.tabletTopBarHeight - StyleSheet.hairlineWidth,
+  );
   const rootInsetStyle = {
+    width,
+    height,
     paddingTop: insets.top,
     paddingLeft: insets.left,
     paddingRight: insets.right,
+    paddingBottom: insets.bottom,
   } as const;
 
   const handleRun = async () => {
@@ -374,7 +396,9 @@ export default function EditorScreen() {
               </View>
             ) : null}
 
-            <View style={styles.tabletBody}>
+            <View
+              style={[styles.tabletBody, { flex: 0, height: tabletBodyHeight }]}
+            >
               {isSidebarVisible ? (
                 <>
                   <View
@@ -398,7 +422,9 @@ export default function EditorScreen() {
                 </>
               ) : null}
 
-              <View style={styles.tabletEditorArea}>
+              <View
+                style={styles.tabletEditorArea}
+              >
                 <View style={styles.breadcrumbBar}>
                   {(visibleBreadcrumbs.length > 0
                     ? visibleBreadcrumbs
@@ -1045,10 +1071,11 @@ const styles = StyleSheet.create({
   },
   hiddenRunner: {
     position: "absolute",
-    width: 1,
-    height: 1,
-    opacity: 0,
+    width: 8,
+    height: 8,
+    opacity: 0.01,
     bottom: 0,
     right: 0,
+    zIndex: -1,
   },
 });

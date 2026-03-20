@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef } from "react";
-import { StyleSheet, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { StyleSheet, TextInput, View } from "react-native";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 import type { Diagnostic } from "@igcse/compiler/types";
 import { colors } from "../lib/theme";
@@ -25,6 +25,7 @@ export function EditorWebView({
   const currentValueRef = useRef(initialValue);
   const pendingValueRef = useRef<string | null>(initialValue);
   const pendingDiagnosticsRef = useRef<Diagnostic[]>(diagnostics);
+  const [showFallbackEditor, setShowFallbackEditor] = useState(false);
 
   const injectMessage = useCallback((message: object) => {
     webViewRef.current?.injectJavaScript(
@@ -70,6 +71,11 @@ export function EditorWebView({
         return;
       }
 
+      if (data.type === "initError") {
+        setShowFallbackEditor(true);
+        return;
+      }
+
       if (data.type === "onChange" && data.value !== undefined) {
         currentValueRef.current = data.value;
         onChange(data.value);
@@ -82,6 +88,20 @@ export function EditorWebView({
     pendingDiagnosticsRef.current = diagnostics;
     syncDiagnostics();
   }, [diagnostics, syncDiagnostics]);
+
+  useEffect(() => {
+    if (showFallbackEditor) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      if (!isReadyRef.current) {
+        setShowFallbackEditor(true);
+      }
+    }, 2500);
+
+    return () => clearTimeout(timer);
+  }, [showFallbackEditor]);
 
   useEffect(() => {
     if (initialValue === currentValueRef.current) {
@@ -99,24 +119,40 @@ export function EditorWebView({
 
   return (
     <View style={styles.container}>
-      <WebView
-        ref={webViewRef}
-        source={editorHtml}
-        style={styles.webview}
-        originWhitelist={["*"]}
-        javaScriptEnabled
-        domStorageEnabled
-        keyboardDisplayRequiresUserAction={false}
-        textInteractionEnabled
-        onMessage={handleMessage}
-        bounces={false}
-        overScrollMode="never"
-        showsHorizontalScrollIndicator={false}
-        showsVerticalScrollIndicator={false}
-        allowFileAccessFromFileURLs
-        allowUniversalAccessFromFileURLs
-        allowsBackForwardNavigationGestures={false}
-      />
+      {showFallbackEditor ? (
+        <TextInput
+          multiline
+          value={initialValue}
+          onChangeText={onChange}
+          style={styles.fallbackInput}
+          autoCapitalize="none"
+          autoCorrect={false}
+          spellCheck={false}
+          keyboardAppearance="dark"
+          selectionColor={colors.accent}
+          textAlignVertical="top"
+          scrollEnabled
+        />
+      ) : (
+        <WebView
+          ref={webViewRef}
+          source={editorHtml}
+          style={styles.webview}
+          originWhitelist={["*"]}
+          javaScriptEnabled
+          domStorageEnabled
+          keyboardDisplayRequiresUserAction={false}
+          textInteractionEnabled
+          onMessage={handleMessage}
+          bounces={false}
+          overScrollMode="never"
+          showsHorizontalScrollIndicator={false}
+          showsVerticalScrollIndicator={false}
+          allowFileAccessFromFileURLs
+          allowUniversalAccessFromFileURLs
+          allowsBackForwardNavigationGestures={false}
+        />
+      )}
     </View>
   );
 }
@@ -131,5 +167,17 @@ const styles = StyleSheet.create({
   webview: {
     flex: 1,
     backgroundColor: colors.bg,
+  },
+  fallbackInput: {
+    flex: 1,
+    minHeight: 0,
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    paddingBottom: 16,
+    color: colors.text,
+    backgroundColor: colors.bg,
+    fontFamily: "Menlo",
+    fontSize: 13,
+    lineHeight: 22,
   },
 });

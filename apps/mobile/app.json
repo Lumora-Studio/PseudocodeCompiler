@@ -15,11 +15,11 @@
     "ios": {
       "icon": "./assets/ios-app-icon.icon",
       "supportsTablet": true,
+      "requireFullScreen": true,
       "bundleIdentifier": "com.alex.igcsepseudocodecompiler",
       "buildNumber": "1",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false,
-        "UIRequiresFullScreen": true
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -39,6 +39,12 @@
         "expo-router",
         {
           "root": "./app"
+        }
+      ],
+      [
+        "expo-screen-orientation",
+        {
+          "initialOrientation": "LANDSCAPE"
         }
       ]
     ],

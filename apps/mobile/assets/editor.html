@@ -78,6 +78,13 @@
     }
   }
 
+  window.addEventListener("error", function (event) {
+    postToRN({
+      type: "initError",
+      message: event && event.message ? event.message : "Editor bootstrap failed"
+    });
+  });
+
   function findCommentStart(line) {
     var quote = null;
     for (var i = 0; i < line.length; i++) {
@@ -122,8 +129,16 @@
     paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.55.0/min/vs" }
   });
 
+  require.onError = function (error) {
+    postToRN({
+      type: "initError",
+      message: error && error.message ? error.message : "Monaco loader failed"
+    });
+  };
+
   require(["vs/editor/editor.main"], function (_monaco) {
-    monaco = _monaco;
+    try {
+      monaco = _monaco;
 
     monaco.languages.register({ id: "igcse-pseudocode" });
     monaco.languages.setMonarchTokensProvider("igcse-pseudocode", {
@@ -383,6 +398,21 @@
         return domNode ? domNode.querySelector('.inputarea') : null;
       }
 
+      function focusEditorInput() {
+        editor.focus();
+
+        var inputArea = getInputAreaElement();
+        if (!inputArea || typeof inputArea.focus !== "function") {
+          return;
+        }
+
+        try {
+          inputArea.focus({ preventScroll: true });
+        } catch (error) {
+          inputArea.focus();
+        }
+      }
+
       function isClientPointInsideEditor(clientX, clientY) {
         var domNode = editor.getDomNode();
         if (!domNode) {
@@ -433,7 +463,7 @@
           }
 
           placeCursorAtClientPoint(e.clientX, e.clientY);
-          editor.focus();
+          focusEditorInput();
         }, true);
 
         domNode.addEventListener('touchstart', function(e) {
@@ -450,7 +480,7 @@
           };
 
           placeCursorAtClientPoint(touch.clientX, touch.clientY);
-          editor.focus();
+          focusEditorInput();
         }, { passive: true });
 
         domNode.addEventListener('touchend', function(e) {
@@ -481,7 +511,7 @@
             var targetClientY = touch.clientY;
             window.requestAnimationFrame(function () {
               placeCursorAtClientPoint(targetClientX, targetClientY);
-              editor.focus();
+              focusEditorInput();
             });
           }
 
@@ -493,20 +523,26 @@
         }, { passive: true });
       }
 
-      // Keep Monaco's input area non-interactive so it does not swallow touch
-      // gestures across the editor surface on iPhone/iPad. We still bump the
-      // font size to avoid iOS zooming the page on focus.
+      // Keep Monaco's input area visually hidden while still allowing iOS to
+      // focus it for keyboard input. Fully disabling pointer events here makes
+      // the editor impossible to type into on iPad.
       var appleInputFix = document.createElement('style');
       appleInputFix.textContent =
         '.monaco-editor .inputarea { ' +
-          'opacity: 0 !important; ' +
-          'pointer-events: none !important; ' +
+          'opacity: 0.001 !important; ' +
+          'pointer-events: auto !important; ' +
           'font-size: 16px !important; ' +
         '}';
       document.head.appendChild(appleInputFix);
     }
 
-    postToRN({ type: "ready" });
+      postToRN({ type: "ready" });
+    } catch (error) {
+      postToRN({
+        type: "initError",
+        message: error && error.message ? error.message : "Monaco initialization failed"
+      });
+    }
   });
 
   function handleMessage(event) {

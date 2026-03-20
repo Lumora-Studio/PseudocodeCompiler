@@ -98,6 +98,17 @@ interface CompilePayload {
   result: ReturnType<typeof compilePseudocode>;
 }
 
+function shouldReplaceTerminalWithRuntimeStatus(text: string): boolean {
+  const trimmed = text.trim();
+  return (
+    trimmed.length === 0 ||
+    text === INITIAL_TERMINAL_TEXT ||
+    trimmed === "Python runtime ready." ||
+    trimmed === "Python runtime initialization timed out." ||
+    trimmed === "Failed to load the Pyodide bootstrap script."
+  );
+}
+
 export interface CompilerWorkspaceController {
   workspace: WorkspaceState | null;
   activeDocument: ReturnType<typeof getActiveDocument> | null;
@@ -253,12 +264,34 @@ export function useCompilerWorkspace(): CompilerWorkspaceController {
   }, [workspace, activeDocument]);
 
   const handlePyodideMessage = useCallback((event: WebViewMessageEvent) => {
-    let data: { type: string; id?: number; status?: string; result?: RunResult };
+    let data: {
+      type: string;
+      id?: number;
+      status?: string;
+      message?: string;
+      result?: RunResult;
+    };
 
     try {
       data = JSON.parse(event.nativeEvent.data);
     } catch {
       return;
+    }
+
+    if (data.type === "runtime-status" && data.status === "ready") {
+      setTerminalText((current) =>
+        shouldReplaceTerminalWithRuntimeStatus(current)
+          ? "Python runtime ready."
+          : current,
+      );
+    }
+
+    if (data.type === "runtime-status" && data.status === "failed") {
+      const message =
+        data.message ?? "Python runtime failed to initialize.";
+      setTerminalText((current) =>
+        shouldReplaceTerminalWithRuntimeStatus(current) ? message : current,
+      );
     }
 
     pythonRunnerRef.current?.handleMessage(data);
