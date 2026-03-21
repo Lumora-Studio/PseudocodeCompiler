@@ -258,6 +258,7 @@ export default function EditorScreen() {
     toggleFolder,
     createFolderInWorkspace,
     createDocumentInWorkspace,
+    renameNodeInWorkspace,
     deleteNodesInWorkspace,
     moveNodesInWorkspace,
     clearTerminal,
@@ -304,12 +305,27 @@ export default function EditorScreen() {
     };
   }, []);
 
+  useEffect(() => {
+    if (isTabletLayout || phoneTab === "editor") {
+      return;
+    }
+
+    Keyboard.dismiss();
+  }, [isTabletLayout, phoneTab]);
+
   const visibleBreadcrumbs = useMemo(() => {
     return breadcrumbs.filter((node) => node.parentId !== null);
   }, [breadcrumbs]);
 
-  const phoneTabBarBottomPadding = Math.max(insets.bottom, 21);
+  const phoneTabBarBottomPadding = 21;
   const screenHeight = height - insets.top - insets.bottom;
+  const phoneBodyHeight = Math.max(
+    0,
+    screenHeight -
+      dimensions.phoneTopBarHeight -
+      StyleSheet.hairlineWidth -
+      (saveError ? 24 : 0),
+  );
   const tabletBodyHeight = Math.max(
     0,
     screenHeight - dimensions.tabletTopBarHeight - StyleSheet.hairlineWidth,
@@ -327,7 +343,6 @@ export default function EditorScreen() {
         paddingTop: insets.top,
         paddingLeft: insets.left,
         paddingRight: insets.right,
-        paddingBottom: insets.bottom,
       } as const);
 
   const handleRun = async () => {
@@ -420,6 +435,7 @@ export default function EditorScreen() {
                       onToggleFolder={toggleFolder}
                       onCreateFolder={createFolderInWorkspace}
                       onCreateDocument={createDocumentInWorkspace}
+                      onRenameNode={renameNodeInWorkspace}
                       onDeleteNodes={deleteNodesInWorkspace}
                       onMoveNodes={moveNodesInWorkspace}
                       onSelectDocument={selectDocument}
@@ -534,17 +550,21 @@ export default function EditorScreen() {
               </View>
             ) : null}
 
-            <View style={styles.phoneBody}>
+            <View style={[styles.phoneBody, { flex: 0, height: phoneBodyHeight }]}>
               <View style={styles.phoneContent}>
-                {phoneTab === "editor" ? (
-                  <View style={styles.phonePanel}>
-                    <EditorWebView
-                      initialValue={activeDocument.source}
-                      onChange={updateActiveDocumentSource}
-                      diagnostics={compileDiagnostics}
-                    />
-                  </View>
-                ) : null}
+                <View
+                  pointerEvents={phoneTab === "editor" ? "auto" : "none"}
+                  style={[
+                    styles.phonePanel,
+                    phoneTab !== "editor" && styles.phonePanelHidden,
+                  ]}
+                >
+                  <EditorWebView
+                    initialValue={activeDocument.source}
+                    onChange={updateActiveDocumentSource}
+                    diagnostics={compileDiagnostics}
+                  />
+                </View>
 
                 {phoneTab === "files" ? (
                   <View style={styles.phonePanel}>
@@ -554,6 +574,7 @@ export default function EditorScreen() {
                       onToggleFolder={toggleFolder}
                       onCreateFolder={createFolderInWorkspace}
                       onCreateDocument={createDocumentInWorkspace}
+                      onRenameNode={renameNodeInWorkspace}
                       onDeleteNodes={deleteNodesInWorkspace}
                       onMoveNodes={moveNodesInWorkspace}
                       onSelectDocument={(documentId: string) => {
@@ -905,14 +926,18 @@ const styles = StyleSheet.create({
   phoneContent: {
     flex: 1,
     minHeight: 0,
+    position: "relative",
   },
   phonePanel: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     minHeight: 0,
     backgroundColor: colors.bg,
   },
+  phonePanelHidden: {
+    opacity: 0,
+  },
   phoneOutputPanel: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     minHeight: 0,
     backgroundColor: colors.surface,
   },

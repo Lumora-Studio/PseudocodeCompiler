@@ -19,6 +19,7 @@ import {
   getActiveDocument,
   getNodePath,
   moveNodes,
+  renameNode,
   setActiveDocument,
   setDocumentCompileSummary,
   setExpandedFolders,
@@ -130,6 +131,7 @@ export interface CompilerWorkspaceController {
   toggleFolder: (folderId: string) => void;
   createFolderInWorkspace: (parentId?: string) => void;
   createDocumentInWorkspace: (parentId?: string) => void;
+  renameNodeInWorkspace: (nodeId: string, name: string) => boolean;
   deleteNodesInWorkspace: (nodeIds: string[]) => boolean;
   moveNodesInWorkspace: (
     nodeIds: string[],
@@ -558,6 +560,26 @@ export function useCompilerWorkspace(): CompilerWorkspaceController {
     [updateWorkspaceState],
   );
 
+  const renameNodeInWorkspace = useCallback(
+    (nodeId: string, name: string) => {
+      try {
+        updateWorkspaceState(
+          (current) => renameNode(current, nodeId, name),
+          "immediate",
+        );
+        return true;
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Unable to rename the selected item.";
+        Alert.alert("Workspace Error", message);
+        return false;
+      }
+    },
+    [updateWorkspaceState],
+  );
+
   const deleteNodesInWorkspace = useCallback(
     (nodeIds: string[]) => {
       try {
@@ -625,6 +647,7 @@ export function useCompilerWorkspace(): CompilerWorkspaceController {
     toggleFolder,
     createFolderInWorkspace,
     createDocumentInWorkspace,
+    renameNodeInWorkspace,
     deleteNodesInWorkspace,
     moveNodesInWorkspace,
     clearTerminal,

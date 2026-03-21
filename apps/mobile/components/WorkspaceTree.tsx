@@ -6,6 +6,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
   type GestureResponderEvent,
   type LayoutRectangle,
@@ -26,6 +27,7 @@ interface WorkspaceTreeProps {
   onToggleFolder: (folderId: string) => void;
   onCreateFolder: (parentId?: string) => void;
   onCreateDocument: (parentId?: string) => void;
+  onRenameNode: (nodeId: string, name: string) => boolean;
   onDeleteNodes: (nodeIds: string[]) => boolean;
   onMoveNodes: (
     nodeIds: string[],
@@ -39,6 +41,7 @@ const DRAG_LONG_PRESS_DELAY = 260;
 const DRAG_MOVE_THRESHOLD = 8;
 const FOLDER_EXPAND_DELAY = 420;
 const POINTER_MODIFIER_CACHE_MS = 2400;
+const DOUBLE_TAP_DELAY = 240;
 
 type DropPosition = "before" | "after" | "inside";
 
@@ -71,6 +74,10 @@ interface ActionSheetState {
   selection: string[];
 }
 
+interface RenameDialogState {
+  nodeId: string;
+}
+
 interface SelectionModifierState {
   shiftKey: boolean;
   metaKey: boolean;
@@ -84,6 +91,11 @@ interface PointerModifierSnapshot {
   capturedAt: number;
   nodeId: string;
   modifiers: SelectionModifierState;
+}
+
+interface PendingPressState {
+  nodeId: string;
+  timer: ReturnType<typeof setTimeout>;
 }
 
 function isNodeDescendantOfFolder(
@@ -245,6 +257,7 @@ export function WorkspaceTree({
   onToggleFolder,
   onCreateFolder,
   onCreateDocument,
+  onRenameNode,
   onDeleteNodes,
   onMoveNodes,
 }: WorkspaceTreeProps) {
@@ -264,6 +277,7 @@ export function WorkspaceTree({
   const expandHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const expandHoverFolderIdRef = useRef<string | null>(null);
   const pointerModifiersRef = useRef<PointerModifierSnapshot | null>(null);
+  const pendingPressRef = useRef<PendingPressState | null>(null);
   const suppressPressRef = useRef(false);
   const suppressPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const touchGestureRef = useRef<TouchGestureState | null>(null);
@@ -276,6 +290,16 @@ export function WorkspaceTree({
   const [draggingNodeIds, setDraggingNodeIds] = useState<string[]>([]);
   const [dropHint, setDropHint] = useState<DropHint | null>(null);
   const [actionSheet, setActionSheet] = useState<ActionSheetState | null>(null);
+  const [renameDialog, setRenameDialog] = useState<RenameDialogState | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
+
+  const clearPendingPress = useCallback(() => {
+    if (pendingPressRef.current) {
+      clearTimeout(pendingPressRef.current.timer);
+      pendingPressRef.current = null;
+    }
+  }, []);
 
   const selectedNodeIds = useMemo(() => {
     const nextSelection = visibleNodeIds.filter((nodeId) =>
@@ -375,17 +399,29 @@ export function WorkspaceTree({
     if (actionSheet && !knownNodeIds.has(actionSheet.nodeId)) {
       setActionSheet(null);
     }
-  }, [actionSheet, activeDocumentId, visibleNodeIds]);
+
+    if (renameDialog && !knownNodeIds.has(renameDialog.nodeId)) {
+      setRenameDialog(null);
+      setRenameValue("");
+    }
+  }, [actionSheet, activeDocumentId, renameDialog, visibleNodeIds]);
+
+  useEffect(() => {
+    if (actionSheet) {
+      setCreateMenuOpen(false);
+    }
+  }, [actionSheet]);
 
   useEffect(
     () => () => {
+      clearPendingPress();
       clearDragState();
       clearTouchGesture();
       if (suppressPressTimerRef.current) {
         clearTimeout(suppressPressTimerRef.current);
       }
     },
-    [clearDragState, clearTouchGesture],
+    [clearDragState, clearPendingPress, clearTouchGesture],
   );
 
   const scheduleFolderExpand = useCallback(
@@ -523,8 +559,21 @@ export function WorkspaceTree({
     [onSelectDocument],
   );
 
+  const openRenameDialog = useCallback(
+    (node: WorkspaceNode) => {
+      clearPendingPress();
+      setActionSheet(null);
+      setSelectionState([node.id]);
+      setAnchorState(node.id);
+      setRenameValue(node.name);
+      setRenameDialog({ nodeId: node.id });
+    },
+    [clearPendingPress],
+  );
+
   const openActionSheetForNode = useCallback(
     (node: WorkspaceNode) => {
+      clearPendingPress();
       const nextSelection = selectedNodeSet.has(node.id)
         ? orderedSelection
         : [node.id];
@@ -535,7 +584,7 @@ export function WorkspaceTree({
         selection: nextSelection,
       });
     },
-    [orderedSelection, selectedNodeSet],
+    [clearPendingPress, orderedSelection, selectedNodeSet],
   );
 
   const handleNodeSelection = useCallback(
@@ -578,6 +627,7 @@ export function WorkspaceTree({
 
       measureViewport();
       suppressNextPress();
+      clearPendingPress();
       setActionSheet(null);
       setSelectionState(draggedIds);
       setAnchorState(nodeId);
@@ -586,6 +636,7 @@ export function WorkspaceTree({
       clearTouchGesture();
     },
     [
+      clearPendingPress,
       clearTouchGesture,
       measureViewport,
       resolveDraggedNodeIds,
@@ -718,6 +769,17 @@ export function WorkspaceTree({
     [onDeleteNodes, workspace],
   );
 
+  const submitRename = useCallback(() => {
+    if (!renameDialog) {
+      return;
+    }
+
+    if (onRenameNode(renameDialog.nodeId, renameValue)) {
+      setRenameDialog(null);
+      setRenameValue("");
+    }
+  }, [onRenameNode, renameDialog, renameValue]);
+
   const moveSelectionToTopLevel = useCallback(
     (nodeIds: string[]) => {
       const collapsedNodeIds = collapseNodeIds(workspace, nodeIds);
@@ -766,19 +828,66 @@ export function WorkspaceTree({
           ) : null}
         </View>
         <Pressable
-          onPress={() => onCreateDocument(createTargetParentId)}
-          onLongPress={() => onCreateFolder(createTargetParentId)}
-          delayLongPress={250}
+          onPress={() => setCreateMenuOpen((current) => !current)}
           hitSlop={10}
-          accessibilityLabel="Create file. Long press to create folder."
+          accessibilityLabel="Open create menu."
           style={({ pressed }) => [
             styles.headerButton,
-            pressed && styles.headerButtonPressed,
+            (pressed || createMenuOpen) && styles.headerButtonPressed,
           ]}
         >
           <Feather name="plus" size={16} color={colors.accent} />
         </Pressable>
       </View>
+
+      {createMenuOpen ? (
+        <View style={styles.createMenuLayer} pointerEvents="box-none">
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setCreateMenuOpen(false)}
+          />
+          <View style={styles.createMenuWrap} pointerEvents="box-none">
+            <View style={styles.createMenuCard}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.createMenuButton,
+                  pressed && styles.createMenuButtonPressed,
+                ]}
+                onPress={() => {
+                  onCreateDocument(createTargetParentId);
+                  setCreateMenuOpen(false);
+                }}
+              >
+                <Feather
+                  name="file-text"
+                  size={15}
+                  color={colors.accent}
+                  style={styles.createMenuButtonIcon}
+                />
+                <Text style={styles.createMenuButtonText}>Add a code file</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.createMenuButton,
+                  pressed && styles.createMenuButtonPressed,
+                ]}
+                onPress={() => {
+                  onCreateFolder(createTargetParentId);
+                  setCreateMenuOpen(false);
+                }}
+              >
+                <Feather
+                  name="folder-plus"
+                  size={15}
+                  color={colors.accent}
+                  style={styles.createMenuButtonIcon}
+                />
+                <Text style={styles.createMenuButtonText}>Add a folder</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      ) : null}
 
       <View ref={viewportRef} style={styles.listViewport}>
         <ScrollView
@@ -815,6 +924,7 @@ export function WorkspaceTree({
                   };
                 }}
                 onLongPress={(event) => {
+                  clearPendingPress();
                   const gesture = touchGestureRef.current;
                   if (!gesture || gesture.nodeId !== node.id) {
                     touchGestureRef.current = {
@@ -860,13 +970,32 @@ export function WorkspaceTree({
                   }
 
                   const nativeEvent = event.nativeEvent as NativeModifierEvent;
-                  handleNodeSelection(
-                    node,
-                    resolveSelectionModifiers(node.id, nativeEvent),
-                  );
+                  const modifiers = resolveSelectionModifiers(node.id, nativeEvent);
+                  const isPlainTap =
+                    !modifiers.shiftKey && !modifiers.metaKey && !modifiers.ctrlKey;
+
+                  if (!isPlainTap) {
+                    clearPendingPress();
+                    handleNodeSelection(node, modifiers);
+                    return;
+                  }
+
+                  if (pendingPressRef.current?.nodeId === node.id) {
+                    openRenameDialog(node);
+                    return;
+                  }
+
+                  clearPendingPress();
+                  pendingPressRef.current = {
+                    nodeId: node.id,
+                    timer: setTimeout(() => {
+                      pendingPressRef.current = null;
+                      handleNodeSelection(node, modifiers);
+                    }, DOUBLE_TAP_DELAY),
+                  };
                 }}
                 accessibilityRole="button"
-                accessibilityHint="Long press for file actions. Hold and drag after long press to move."
+                accessibilityHint="Long press for file actions. Tap twice quickly to rename. Hold and drag after long press to move."
                 accessibilityState={
                   isFolder
                     ? { expanded: isExpanded, selected: isSelected }
@@ -891,6 +1020,7 @@ export function WorkspaceTree({
                     hitSlop={8}
                     onPress={(event) => {
                       event.stopPropagation();
+                      clearPendingPress();
                       onToggleFolder(node.id);
                     }}
                     style={styles.disclosureButton}
@@ -998,6 +1128,17 @@ export function WorkspaceTree({
                 </>
               ) : null}
 
+              {actionSheet?.selection.length === 1 && contextNode ? (
+                <Pressable
+                  style={styles.actionSheetButton}
+                  onPress={() => openRenameDialog(contextNode)}
+                >
+                  <Text style={styles.actionSheetButtonText}>
+                    {contextNode.type === "folder" ? "Rename Folder" : "Rename File"}
+                  </Text>
+                </Pressable>
+              ) : null}
+
               {canMoveSelectionToRoot && actionSheet ? (
                 <Pressable
                   style={styles.actionSheetButton}
@@ -1031,6 +1172,86 @@ export function WorkspaceTree({
               >
                 <Text style={styles.actionSheetButtonText}>Cancel</Text>
               </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={renameDialog !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setRenameDialog(null);
+          setRenameValue("");
+        }}
+      >
+        <View style={styles.actionSheetOverlay}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => {
+              setRenameDialog(null);
+              setRenameValue("");
+            }}
+          />
+          <View style={styles.renameDialogWrap}>
+            <View style={styles.renameDialogCard}>
+              <View style={styles.renameDialogHeader}>
+                <Text style={styles.actionSheetEyebrow}>Rename</Text>
+                <Text style={styles.renameDialogTitle}>
+                  {renameDialog
+                    ? workspace.nodes[renameDialog.nodeId]?.type === "folder"
+                      ? "Rename Folder"
+                      : "Rename File"
+                    : "Rename Item"}
+                </Text>
+                <Text style={styles.renameDialogCaption} numberOfLines={1}>
+                  {renameDialog
+                    ? workspace.nodes[renameDialog.nodeId]?.name ?? "Selected item"
+                    : "Selected item"}
+                </Text>
+              </View>
+
+              <View style={styles.renameDialogBody}>
+                <TextInput
+                  value={renameValue}
+                  onChangeText={setRenameValue}
+                  autoFocus
+                  selectTextOnFocus
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="done"
+                  placeholder="Enter a name"
+                  placeholderTextColor={colors.text3}
+                  onSubmitEditing={submitRename}
+                  style={styles.renameInput}
+                />
+              </View>
+
+              <View style={styles.renameDialogFooter}>
+                <Pressable
+                  style={[
+                    styles.renameDialogButton,
+                    styles.renameDialogButtonSecondary,
+                  ]}
+                  onPress={() => {
+                    setRenameDialog(null);
+                    setRenameValue("");
+                  }}
+                >
+                  <Text style={styles.renameDialogButtonText}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.renameDialogButton,
+                    !renameValue.trim() && styles.renameDialogButtonDisabled,
+                  ]}
+                  disabled={!renameValue.trim()}
+                  onPress={submitRename}
+                >
+                  <Text style={styles.renameDialogButtonText}>Rename</Text>
+                </Pressable>
+              </View>
             </View>
           </View>
         </View>
@@ -1078,6 +1299,53 @@ const styles = StyleSheet.create({
   },
   headerButtonPressed: {
     backgroundColor: colors.hover,
+  },
+  createMenuLayer: {
+    ...StyleSheet.absoluteFillObject,
+    top: 44,
+    zIndex: 20,
+  },
+  createMenuWrap: {
+    flex: 1,
+    alignItems: "flex-end",
+    paddingTop: 8,
+    paddingRight: 12,
+  },
+  createMenuCard: {
+    minWidth: 188,
+    overflow: "hidden",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.separator,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    shadowColor: "#000000",
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
+    shadowOffset: {
+      width: 0,
+      height: 8,
+    },
+    elevation: 12,
+  },
+  createMenuButton: {
+    minHeight: 42,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    gap: 10,
+  },
+  createMenuButtonPressed: {
+    backgroundColor: colors.hover,
+  },
+  createMenuButtonIcon: {
+    width: 18,
+    textAlign: "center",
+  },
+  createMenuButtonText: {
+    color: colors.text,
+    fontFamily: fonts.sans,
+    fontSize: 14,
+    fontWeight: "500",
   },
   list: {
     flex: 1,
@@ -1198,5 +1466,79 @@ const styles = StyleSheet.create({
   },
   actionSheetButtonTextDanger: {
     color: colors.red,
+  },
+  renameDialogWrap: {
+    flex: 1,
+    justifyContent: "center",
+    paddingHorizontal: 20,
+  },
+  renameDialogCard: {
+    overflow: "hidden",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.separator,
+    borderRadius: radii.section,
+    backgroundColor: colors.surface,
+  },
+  renameDialogHeader: {
+    gap: 4,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+    backgroundColor: colors.surface2,
+  },
+  renameDialogTitle: {
+    color: colors.text,
+    fontFamily: fonts.sans,
+    fontSize: 17,
+    fontWeight: "600",
+  },
+  renameDialogCaption: {
+    color: colors.text3,
+    fontFamily: fonts.sans,
+    fontSize: 13,
+  },
+  renameDialogBody: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+  },
+  renameInput: {
+    minHeight: 46,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.separator,
+    borderRadius: radii.compactButton,
+    backgroundColor: colors.bg,
+    color: colors.text,
+    fontFamily: fonts.sans,
+    fontSize: 15,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  renameDialogFooter: {
+    flexDirection: "row",
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 16,
+  },
+  renameDialogButton: {
+    flex: 1,
+    minHeight: 42,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radii.button,
+    backgroundColor: colors.accent,
+  },
+  renameDialogButtonSecondary: {
+    backgroundColor: colors.surface2,
+  },
+  renameDialogButtonDisabled: {
+    opacity: 0.45,
+  },
+  renameDialogButtonText: {
+    color: colors.text,
+    fontFamily: fonts.sans,
+    fontSize: 14,
+    fontWeight: "600",
   },
 });
