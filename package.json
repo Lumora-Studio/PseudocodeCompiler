@@ -11,6 +11,9 @@
   "scripts": {
     "dev": "npm run dev --workspace=@igcse/web",
     "dev:web": "npm run dev:web --workspace=@igcse/web",
+    "dist": "npm run dist --workspace=@igcse/web",
+    "dist:unsigned": "npm run dist:unsigned --workspace=@igcse/web",
+    "pack": "npm run pack --workspace=@igcse/web",
     "ios:ipad26": "npm run ios:ipad26 --workspace=@igcse/mobile",
     "ios:preview": "npm run ios:preview --workspace=@igcse/mobile",
     "ios:production": "npm run ios:production --workspace=@igcse/mobile",

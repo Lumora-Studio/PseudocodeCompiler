@@ -3,6 +3,7 @@
   "version": "0.1.8",
   "private": true,
   "description": "Next.js + Electron web/desktop app for IGCSE pseudocode compiler.",
+  "author": "Alex",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "concurrently -k \"npm:dev:web\" \"npm:dev:electron\"",
@@ -16,7 +17,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "dist": "npm run build:electron-web && electron-builder --mac dmg",
+    "dist": "npm run build:electron-web && node scripts/check-macos-signing.cjs && electron-builder --mac dmg",
+    "dist:unsigned": "npm run build:electron-web && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg",
     "pack": "npm run build:electron-web && electron-builder --dir"
   },
   "dependencies": {
@@ -41,7 +43,7 @@
     "@vitest/coverage-v8": "^4.0.18",
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
-    "electron": "^37.7.4",
+    "electron": "37.10.3",
     "electron-builder": "^26.0.20",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
@@ -60,7 +62,8 @@
   "build": {
     "appId": "com.alex.igcsepseudocodecompiler",
     "productName": "IGCSE Pseudocode Compiler",
-    "electronDist": "node_modules/electron/dist",
+    "electronVersion": "37.10.3",
+    "electronDist": "../../node_modules/electron/dist",
     "files": [
       {
         "from": "electron",

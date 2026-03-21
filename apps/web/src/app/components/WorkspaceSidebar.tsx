@@ -56,7 +56,7 @@ interface ContextMenuState {
   selection: string[];
 }
 
-interface TouchGestureState {
+interface PointerGestureState {
   pointerId: number;
   nodeId: string;
   originX: number;
@@ -151,8 +151,8 @@ export function WorkspaceSidebar({
   const expandHoverTimerRef = useRef<number | null>(null);
   const expandHoverFolderIdRef = useRef<string | null>(null);
   const longPressTimerRef = useRef<number | null>(null);
-  const touchGestureRef = useRef<TouchGestureState | null>(null);
-  const touchDragPointerIdRef = useRef<number | null>(null);
+  const pointerGestureRef = useRef<PointerGestureState | null>(null);
+  const dragPointerIdRef = useRef<number | null>(null);
   const suppressClickRef = useRef(false);
   const suppressClickTimerRef = useRef<number | null>(null);
   const treeContainerRef = useRef<HTMLDivElement | null>(null);
@@ -176,7 +176,13 @@ export function WorkspaceSidebar({
     if (typeof window === "undefined") {
       return;
     }
+    const electronWindow = window as Window & { electron?: { isDesktop?: boolean } };
+    const isMacDesktopShell =
+      Boolean(electronWindow.electron?.isDesktop) &&
+      /Mac/i.test(typeof navigator === "undefined" ? "" : navigator.platform ?? "");
+
     setSupportsNativeDragAndDrop(
+      !isMacDesktopShell &&
       supportsDesktopNativeDragAndDrop(
         typeof window.matchMedia === "function" ? window.matchMedia.bind(window) : undefined,
         typeof navigator === "undefined" ? undefined : navigator,
@@ -246,13 +252,13 @@ export function WorkspaceSidebar({
     }
   };
 
-  const clearLongPress = () => {
+  const clearPointerGesture = () => {
     if (longPressTimerRef.current !== null) {
       window.clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
-    touchGestureRef.current = null;
-    touchDragPointerIdRef.current = null;
+    pointerGestureRef.current = null;
+    dragPointerIdRef.current = null;
   };
 
   const suppressNextClick = () => {
@@ -331,7 +337,7 @@ export function WorkspaceSidebar({
   const handleContextMenu = (event: MouseEvent<HTMLDivElement>, node: WorkspaceNode) => {
     event.preventDefault();
     event.stopPropagation();
-    clearLongPress();
+    clearPointerGesture();
     openContextMenuForNode(node, event.clientX, event.clientY);
   };
 
@@ -408,7 +414,7 @@ export function WorkspaceSidebar({
     return null;
   };
 
-  const startTouchDrag = (nodeId: string, pointerId: number) => {
+  const startPointerDrag = (nodeId: string, pointerId: number) => {
     const draggedNodeIds = resolveDraggedNodeIds(nodeId);
     if (draggedNodeIds.length === 0) {
       return;
@@ -418,12 +424,12 @@ export function WorkspaceSidebar({
     setAnchorState(nodeId);
     setContextMenu(null);
     draggingNodeIdsRef.current = draggedNodeIds;
-    touchDragPointerIdRef.current = pointerId;
-    touchGestureRef.current = null;
+    dragPointerIdRef.current = pointerId;
+    pointerGestureRef.current = null;
     suppressNextClick();
   };
 
-  const handleTouchDrop = (clientX: number, clientY: number) => {
+  const handlePointerDrop = (clientX: number, clientY: number) => {
     const draggedNodeIds = draggingNodeIdsRef.current;
     if (draggedNodeIds.length === 0) {
       clearDragState();
@@ -457,12 +463,25 @@ export function WorkspaceSidebar({
 
   const handleRowPointerDown = (event: ReactPointerEvent<HTMLDivElement>, node: WorkspaceNode) => {
     if (event.pointerType === "mouse") {
+      if (supportsNativeDragAndDrop || event.button !== 0) {
+        return;
+      }
+
+      clearPointerGesture();
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+      pointerGestureRef.current = {
+        pointerId: event.pointerId,
+        nodeId: node.id,
+        originX: event.clientX,
+        originY: event.clientY,
+        readyToDrag: true,
+      };
       return;
     }
 
-    clearLongPress();
+    clearPointerGesture();
     event.currentTarget.setPointerCapture?.(event.pointerId);
-    touchGestureRef.current = {
+    pointerGestureRef.current = {
       pointerId: event.pointerId,
       nodeId: node.id,
       originX: event.clientX,
@@ -470,12 +489,12 @@ export function WorkspaceSidebar({
       readyToDrag: false,
     };
     longPressTimerRef.current = window.setTimeout(() => {
-      const gesture = touchGestureRef.current;
+      const gesture = pointerGestureRef.current;
       longPressTimerRef.current = null;
       if (!gesture || gesture.pointerId !== event.pointerId || gesture.nodeId !== node.id) {
         return;
       }
-      touchGestureRef.current = {
+      pointerGestureRef.current = {
         ...gesture,
         readyToDrag: true,
       };
@@ -483,56 +502,58 @@ export function WorkspaceSidebar({
   };
 
   const handleRowPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (touchDragPointerIdRef.current === event.pointerId) {
+    if (dragPointerIdRef.current === event.pointerId) {
       event.preventDefault();
       setDropHint(resolvePointDropHint(event.clientX, event.clientY, draggingNodeIdsRef.current));
       return;
     }
 
-    const touchGesture = touchGestureRef.current;
-    if (!touchGesture || touchGesture.pointerId !== event.pointerId) {
+    const pointerGesture = pointerGestureRef.current;
+    if (!pointerGesture || pointerGesture.pointerId !== event.pointerId) {
       return;
     }
 
     const movedPastThreshold =
-      Math.abs(event.clientX - touchGesture.originX) > 8 ||
-      Math.abs(event.clientY - touchGesture.originY) > 8;
+      Math.abs(event.clientX - pointerGesture.originX) > 8 ||
+      Math.abs(event.clientY - pointerGesture.originY) > 8;
 
-    if (!touchGesture.readyToDrag) {
+    if (!pointerGesture.readyToDrag) {
       if (movedPastThreshold) {
-        clearLongPress();
+        clearPointerGesture();
       }
       return;
     }
 
     if (movedPastThreshold) {
       event.preventDefault();
-      startTouchDrag(touchGesture.nodeId, event.pointerId);
+      startPointerDrag(pointerGesture.nodeId, event.pointerId);
       setDropHint(resolvePointDropHint(event.clientX, event.clientY, draggingNodeIdsRef.current));
     }
   };
 
   const handleRowPointerUp = (event: ReactPointerEvent<HTMLDivElement>, node: WorkspaceNode) => {
-    if (event.pointerType === "mouse") {
-      clearLongPress();
-      return;
-    }
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
 
-    if (touchDragPointerIdRef.current === event.pointerId) {
+    if (dragPointerIdRef.current === event.pointerId) {
       event.preventDefault();
-      handleTouchDrop(event.clientX, event.clientY);
-      clearLongPress();
+      handlePointerDrop(event.clientX, event.clientY);
+      clearPointerGesture();
       return;
     }
 
-    const touchGesture = touchGestureRef.current;
-    if (touchGesture && touchGesture.pointerId === event.pointerId && touchGesture.readyToDrag) {
+    const pointerGesture = pointerGestureRef.current;
+    if (
+      event.pointerType !== "mouse" &&
+      pointerGesture &&
+      pointerGesture.pointerId === event.pointerId &&
+      pointerGesture.readyToDrag
+    ) {
       event.preventDefault();
       suppressNextClick();
       openContextMenuForNode(node, event.clientX, event.clientY);
     }
 
-    clearLongPress();
+    clearPointerGesture();
   };
 
   const clearDragState = () => {
@@ -542,7 +563,7 @@ export function WorkspaceSidebar({
     }
     expandHoverFolderIdRef.current = null;
     draggingNodeIdsRef.current = [];
-    touchDragPointerIdRef.current = null;
+    dragPointerIdRef.current = null;
     setDropHint(null);
   };
 
@@ -841,7 +862,7 @@ export function WorkspaceSidebar({
                   onPointerUp={(event) => handleRowPointerUp(event, node)}
                   onPointerCancel={() => {
                     clearDragState();
-                    clearLongPress();
+                    clearPointerGesture();
                   }}
                   onDragStart={(event) => handleDragStart(event, node.id)}
                   onDragEnd={clearDragState}
@@ -860,6 +881,11 @@ export function WorkspaceSidebar({
                     <button
                       type="button"
                       className="flex h-5 w-3.5 items-center justify-center text-[var(--text3)]"
+                      onPointerDown={(event) => {
+                        if (event.pointerType === "mouse") {
+                          event.stopPropagation();
+                        }
+                      }}
                       onClick={(event) => {
                         if (suppressClickRef.current) {
                           event.preventDefault();

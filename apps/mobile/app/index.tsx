@@ -314,14 +314,21 @@ export default function EditorScreen() {
     0,
     screenHeight - dimensions.tabletTopBarHeight - StyleSheet.hairlineWidth,
   );
-  const rootInsetStyle = {
-    width,
-    height,
-    paddingTop: insets.top,
-    paddingLeft: insets.left,
-    paddingRight: insets.right,
-    paddingBottom: insets.bottom,
-  } as const;
+  const rootInsetStyle = isTabletLayout
+    ? ({
+        width,
+        height,
+        paddingTop: insets.top,
+        paddingLeft: insets.left,
+        paddingRight: insets.right,
+        paddingBottom: insets.bottom,
+      } as const)
+    : ({
+        paddingTop: insets.top,
+        paddingLeft: insets.left,
+        paddingRight: insets.right,
+        paddingBottom: insets.bottom,
+      } as const);
 
   const handleRun = async () => {
     await runCurrent();

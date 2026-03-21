@@ -26,6 +26,7 @@ export function EditorWebView({
   const pendingValueRef = useRef<string | null>(initialValue);
   const pendingDiagnosticsRef = useRef<Diagnostic[]>(diagnostics);
   const [showFallbackEditor, setShowFallbackEditor] = useState(false);
+  const [didInitFail, setDidInitFail] = useState(false);
 
   const injectMessage = useCallback((message: object) => {
     webViewRef.current?.injectJavaScript(
@@ -61,6 +62,8 @@ export function EditorWebView({
 
       if (data.type === "ready") {
         isReadyRef.current = true;
+        setDidInitFail(false);
+        setShowFallbackEditor(false);
         if (pendingValueRef.current !== null) {
           currentValueRef.current = pendingValueRef.current;
           injectMessage({ type: "setValue", value: pendingValueRef.current });
@@ -72,6 +75,7 @@ export function EditorWebView({
       }
 
       if (data.type === "initError") {
+        setDidInitFail(true);
         setShowFallbackEditor(true);
         return;
       }
@@ -90,7 +94,7 @@ export function EditorWebView({
   }, [diagnostics, syncDiagnostics]);
 
   useEffect(() => {
-    if (showFallbackEditor) {
+    if (didInitFail) {
       return;
     }
 
@@ -98,10 +102,10 @@ export function EditorWebView({
       if (!isReadyRef.current) {
         setShowFallbackEditor(true);
       }
-    }, 2500);
+    }, 12000);
 
     return () => clearTimeout(timer);
-  }, [showFallbackEditor]);
+  }, [didInitFail]);
 
   useEffect(() => {
     if (initialValue === currentValueRef.current) {
@@ -119,6 +123,25 @@ export function EditorWebView({
 
   return (
     <View style={styles.container}>
+      <WebView
+        ref={webViewRef}
+        source={editorHtml}
+        style={[styles.webview, showFallbackEditor && styles.webviewHidden]}
+        originWhitelist={["*"]}
+        javaScriptEnabled
+        domStorageEnabled
+        keyboardDisplayRequiresUserAction={false}
+        textInteractionEnabled
+        onMessage={handleMessage}
+        bounces={false}
+        overScrollMode="never"
+        showsHorizontalScrollIndicator={false}
+        showsVerticalScrollIndicator={false}
+        allowFileAccessFromFileURLs
+        allowUniversalAccessFromFileURLs
+        allowsBackForwardNavigationGestures={false}
+      />
+
       {showFallbackEditor ? (
         <TextInput
           multiline
@@ -133,26 +156,7 @@ export function EditorWebView({
           textAlignVertical="top"
           scrollEnabled
         />
-      ) : (
-        <WebView
-          ref={webViewRef}
-          source={editorHtml}
-          style={styles.webview}
-          originWhitelist={["*"]}
-          javaScriptEnabled
-          domStorageEnabled
-          keyboardDisplayRequiresUserAction={false}
-          textInteractionEnabled
-          onMessage={handleMessage}
-          bounces={false}
-          overScrollMode="never"
-          showsHorizontalScrollIndicator={false}
-          showsVerticalScrollIndicator={false}
-          allowFileAccessFromFileURLs
-          allowUniversalAccessFromFileURLs
-          allowsBackForwardNavigationGestures={false}
-        />
-      )}
+      ) : null}
     </View>
   );
 }
@@ -168,9 +172,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg,
   },
+  webviewHidden: {
+    opacity: 0.01,
+  },
   fallbackInput: {
-    flex: 1,
-    minHeight: 0,
+    ...StyleSheet.absoluteFillObject,
     paddingHorizontal: 14,
     paddingTop: 10,
     paddingBottom: 16,

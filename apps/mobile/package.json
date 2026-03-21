@@ -9,7 +9,7 @@
     "ios:preview": "eas build --platform ios --profile preview",
     "ios:production": "eas build --platform ios --profile production",
     "ios:testflight": "npx testflight",
-    "android": "expo start --android",
+    "android": "expo run:android",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit"
   },

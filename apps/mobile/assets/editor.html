@@ -27,7 +27,6 @@
 <body>
 <div id="editor"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.55.0/min/vs/loader.js"></script>
 <script>
 (function () {
   "use strict";
@@ -68,6 +67,8 @@
   var editor = null;
   var monaco = null;
   var isProgrammaticEdit = false;
+  var loaderReady = null;
+  var MONACO_BASE_URL = "https://cdn.jsdelivr.net/npm/monaco-editor@0.55.0/min/vs";
   var isAppleTouchDevice =
     /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
@@ -78,11 +79,49 @@
     }
   }
 
-  window.addEventListener("error", function (event) {
+  function reportInitError(message) {
     postToRN({
       type: "initError",
-      message: event && event.message ? event.message : "Editor bootstrap failed"
+      message: message
     });
+  }
+
+  function ensureMonacoLoader() {
+    if (typeof require === "function" && require.config) {
+      return Promise.resolve();
+    }
+
+    if (!loaderReady) {
+      loaderReady = fetch(MONACO_BASE_URL + "/loader.js")
+        .then(function (response) {
+          if (!response.ok) {
+            throw new Error("Failed to fetch the Monaco loader.");
+          }
+
+          return response.text();
+        })
+        .then(function (source) {
+          (0, eval)(
+            source + "\n//# sourceURL=" + MONACO_BASE_URL + "/loader.js"
+          );
+
+          if (typeof require !== "function" || !require.config) {
+            throw new Error("Monaco loader did not expose require().");
+          }
+        })
+        .catch(function (error) {
+          loaderReady = null;
+          throw error;
+        });
+    }
+
+    return loaderReady;
+  }
+
+  window.addEventListener("error", function (event) {
+    reportInitError(
+      event && event.message ? event.message : "Editor bootstrap failed"
+    );
   });
 
   function findCommentStart(line) {
@@ -125,20 +164,21 @@
     return uppercaseKeywords(line.slice(0, cs)) + line.slice(cs);
   }
 
-  require.config({
-    paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.55.0/min/vs" }
-  });
+  ensureMonacoLoader()
+    .then(function () {
+      require.config({
+        paths: { vs: MONACO_BASE_URL }
+      });
 
-  require.onError = function (error) {
-    postToRN({
-      type: "initError",
-      message: error && error.message ? error.message : "Monaco loader failed"
-    });
-  };
+      require.onError = function (error) {
+        reportInitError(
+          error && error.message ? error.message : "Monaco loader failed"
+        );
+      };
 
-  require(["vs/editor/editor.main"], function (_monaco) {
-    try {
-      monaco = _monaco;
+      require(["vs/editor/editor.main"], function (_monaco) {
+        try {
+          monaco = _monaco;
 
     monaco.languages.register({ id: "igcse-pseudocode" });
     monaco.languages.setMonarchTokensProvider("igcse-pseudocode", {
@@ -536,14 +576,21 @@
       document.head.appendChild(appleInputFix);
     }
 
-      postToRN({ type: "ready" });
-    } catch (error) {
-      postToRN({
-        type: "initError",
-        message: error && error.message ? error.message : "Monaco initialization failed"
+          postToRN({ type: "ready" });
+        } catch (error) {
+          reportInitError(
+            error && error.message
+              ? error.message
+              : "Monaco initialization failed"
+          );
+        }
       });
-    }
-  });
+    })
+    .catch(function (error) {
+      reportInitError(
+        error && error.message ? error.message : "Monaco bootstrap failed"
+      );
+    });
 
   function handleMessage(event) {
     var data;
