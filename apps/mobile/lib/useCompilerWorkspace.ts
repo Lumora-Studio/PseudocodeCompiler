@@ -26,6 +26,7 @@ import {
   updateDocumentSource,
   workspaceHasFolder,
   type CompileSummary,
+  type WorkspaceDocumentNode,
   type WorkspaceState,
 } from "@igcse/workspace";
 import { PythonRunner } from "./pythonRunner";
@@ -95,7 +96,7 @@ function summarizeDiagnostics(diagnostics: Diagnostic[]): CompileSummary {
 }
 
 interface CompilePayload {
-  document: ReturnType<typeof getActiveDocument>;
+  document: WorkspaceDocumentNode;
   result: ReturnType<typeof compilePseudocode>;
 }
 
@@ -367,6 +368,9 @@ export function useCompilerWorkspace(): CompilerWorkspaceController {
     }
 
     const document = getActiveDocument(currentWorkspace);
+    if (!document) {
+      return null;
+    }
     return {
       document,
       result: compilePseudocode({
@@ -380,6 +384,7 @@ export function useCompilerWorkspace(): CompilerWorkspaceController {
   const runCurrent = useCallback(async () => {
     const payload = compileCurrent();
     if (!payload) {
+      setTerminalText("Create your first file to compile and run code.");
       return;
     }
 

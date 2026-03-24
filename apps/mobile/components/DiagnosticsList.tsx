@@ -1,7 +1,12 @@
 import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import type { Diagnostic } from "@igcse/compiler/types";
-import { colors, fonts } from "../lib/theme";
+import {
+  createThemedStyleSheet,
+  fonts,
+  useAppTheme,
+  useThemedStyles,
+} from "../lib/theme";
 
 interface DiagnosticsListProps {
   diagnostics: Diagnostic[];
@@ -13,6 +18,8 @@ function formatSeverityLabel(severity: Diagnostic["severity"]) {
 }
 
 function DiagnosticBadge({ severity }: { severity: Diagnostic["severity"] }) {
+  const { colors } = useAppTheme();
+  const styles = useThemedStyles(useStyles);
   const icon =
     severity === "error"
       ? "x-circle"
@@ -57,6 +64,8 @@ function DiagnosticBadge({ severity }: { severity: Diagnostic["severity"] }) {
 export function DiagnosticsList({ diagnostics, showHeader = true }: DiagnosticsListProps) {
   const { width } = useWindowDimensions();
   const isCompact = width < 760;
+  const { colors } = useAppTheme();
+  const styles = useThemedStyles(useStyles);
 
   if (diagnostics.length === 0) {
     return (
@@ -140,7 +149,7 @@ export function DiagnosticsList({ diagnostics, showHeader = true }: DiagnosticsL
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyleSheet(({ colors, isDark }) => ({
   container: {
     flex: 1,
     minHeight: 0,
@@ -235,7 +244,7 @@ const styles = StyleSheet.create({
   item: {
     padding: 12,
     borderRadius: 12,
-    backgroundColor: "#2A2A2C",
+    backgroundColor: colors.surface2,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.separator,
   },
@@ -256,16 +265,16 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   badgeError: {
-    backgroundColor: "rgba(255, 69, 58, 0.12)",
-    borderColor: "rgba(255, 69, 58, 0.22)",
+    backgroundColor: isDark ? "rgba(255, 69, 58, 0.12)" : "rgba(192, 59, 43, 0.1)",
+    borderColor: isDark ? "rgba(255, 69, 58, 0.22)" : "rgba(192, 59, 43, 0.2)",
   },
   badgeWarning: {
-    backgroundColor: "rgba(255, 159, 10, 0.14)",
-    borderColor: "rgba(255, 159, 10, 0.24)",
+    backgroundColor: isDark ? "rgba(255, 159, 10, 0.14)" : "rgba(165, 97, 18, 0.12)",
+    borderColor: isDark ? "rgba(255, 159, 10, 0.24)" : "rgba(165, 97, 18, 0.22)",
   },
   badgeInfo: {
-    backgroundColor: "rgba(10, 132, 255, 0.12)",
-    borderColor: "rgba(10, 132, 255, 0.22)",
+    backgroundColor: isDark ? "rgba(10, 132, 255, 0.12)" : "rgba(11, 110, 79, 0.1)",
+    borderColor: isDark ? "rgba(10, 132, 255, 0.22)" : "rgba(11, 110, 79, 0.18)",
   },
   badgeText: {
     fontFamily: fonts.sans,
@@ -295,13 +304,13 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   messageError: {
-    color: "#FFD9D5",
+    color: colors.red,
   },
   messageWarning: {
-    color: "#FFE1B0",
+    color: colors.orange,
   },
   messageInfo: {
-    color: "#D9E8FF",
+    color: colors.accent,
   },
   hintBox: {
     marginTop: 10,
@@ -324,4 +333,4 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 17,
   },
-});
+}));

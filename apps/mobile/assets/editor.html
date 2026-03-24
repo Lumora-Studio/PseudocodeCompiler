@@ -10,17 +10,10 @@
   #editor { width: 100%; height: 100%; }
   /* Prevent iOS auto-zoom on textarea focus (requires >= 16px) */
   .monaco-editor textarea { font-size: 16px !important; }
+  /* Monaco shows a floating "show keyboard" control on iPad. We handle
+     keyboard focus directly from editor taps instead. */
   .monaco-editor .iPadShowKeyboard {
-    opacity: 0.92;
-    border-color: #38383A;
-    background-color: #2C2C2E;
-    color: #E5E5EA;
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
-  }
-  .monaco-editor.vs-dark .iPadShowKeyboard {
-    border-color: #38383A;
-    background-color: #2C2C2E;
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+    display: none !important;
   }
 </style>
 </head>
@@ -68,6 +61,27 @@
   var monaco = null;
   var isProgrammaticEdit = false;
   var loaderReady = null;
+  var currentTheme = {
+    resolvedTheme: "dark",
+    colors: {
+      background: "#1C1C1E",
+      panel: "#2C2C2E",
+      border: "#38383A",
+      textPrimary: "#FFFFFF",
+      textSecondary: "#98989D",
+      textTertiary: "#636366",
+      accent: "#0A84FF",
+      accentSoft: "rgba(10, 132, 255, 0.19)",
+      syntaxKeyword: "#FC5FA3",
+      syntaxIdentifier: "#67B7A4",
+      syntaxType: "#5DD8FF",
+      syntaxString: "#FC6A5D",
+      syntaxNumber: "#D0BF69",
+      syntaxRoutine: "#A167E6",
+      syntaxPlain: "#E5E5EA",
+      lineNumber: "#48484A"
+    }
+  };
   var MONACO_BASE_URL = "https://cdn.jsdelivr.net/npm/monaco-editor@0.55.0/min/vs";
   var isAppleTouchDevice =
     /iPad|iPhone|iPod/.test(navigator.userAgent) ||
@@ -84,6 +98,60 @@
       type: "initError",
       message: message
     });
+  }
+
+  function applySurfaceTheme() {
+    document.documentElement.style.background = currentTheme.colors.background;
+    document.body.style.background = currentTheme.colors.background;
+  }
+
+  function buildMonacoTheme() {
+    var colors = currentTheme.colors;
+    var isLight = currentTheme.resolvedTheme === "light";
+
+    return {
+      base: isLight ? "vs" : "vs-dark",
+      inherit: true,
+      rules: [
+        { token: "keyword", foreground: (colors.syntaxKeyword || "#FC5FA3").replace("#", "") },
+        { token: "type", foreground: (colors.syntaxType || "#5DD8FF").replace("#", "") },
+        { token: "predefined", foreground: (colors.syntaxRoutine || "#A167E6").replace("#", "") },
+        { token: "string", foreground: (colors.syntaxString || "#FC6A5D").replace("#", "") },
+        { token: "comment", foreground: (colors.textTertiary || "#6C7986").replace("#", ""), fontStyle: "italic" },
+        { token: "number", foreground: (colors.syntaxNumber || "#D0BF69").replace("#", "") },
+        { token: "operator", foreground: (colors.syntaxPlain || "#E5E5EA").replace("#", "") },
+        { token: "identifier", foreground: (colors.syntaxIdentifier || "#67B7A4").replace("#", "") },
+        { token: "delimiter", foreground: (colors.syntaxPlain || "#E5E5EA").replace("#", "") }
+      ],
+      colors: {
+        "editor.background": colors.background || "#1C1C1E",
+        "editor.foreground": colors.syntaxPlain || "#E5E5EA",
+        "editorLineNumber.foreground": colors.lineNumber || "#48484A",
+        "editorLineNumber.activeForeground": colors.textSecondary || "#98989D",
+        "editor.lineHighlightBackground": colors.panel || "#2C2C2E",
+        "editorCursor.foreground": colors.syntaxPlain || "#E5E5EA",
+        "editor.selectionBackground": colors.selectionStrong || colors.accentSoft || "#0A84FF30",
+        "editor.inactiveSelectionBackground": colors.border || "#38383A",
+        "editorIndentGuide.background1": colors.border || "#38383A",
+        "editorIndentGuide.activeBackground1": colors.lineNumber || "#48484A",
+        "editorWidget.background": colors.panel || "#2C2C2E",
+        "editorSuggestWidget.background": colors.panel || "#2C2C2E",
+        "editorSuggestWidget.selectedBackground": colors.accentSoft || "#0A84FF30"
+      }
+    };
+  }
+
+  function applyEditorTheme() {
+    applySurfaceTheme();
+
+    if (!monaco) {
+      return;
+    }
+
+    monaco.editor.defineTheme("examLabTheme", buildMonacoTheme());
+    if (editor) {
+      monaco.editor.setTheme("examLabTheme");
+    }
   }
 
   function ensureMonacoLoader() {
@@ -249,36 +317,7 @@
       }
     });
 
-    monaco.editor.defineTheme("examLabTheme", {
-      base: "vs-dark",
-      inherit: true,
-      rules: [
-        { token: "keyword", foreground: "FC5FA3" },
-        { token: "type", foreground: "5DD8FF" },
-        { token: "predefined", foreground: "A167E6" },
-        { token: "string", foreground: "FC6A5D" },
-        { token: "comment", foreground: "6C7986", fontStyle: "italic" },
-        { token: "number", foreground: "D0BF69" },
-        { token: "operator", foreground: "E5E5EA" },
-        { token: "identifier", foreground: "67B7A4" },
-        { token: "delimiter", foreground: "E5E5EA" }
-      ],
-      colors: {
-        "editor.background": "#1C1C1E",
-        "editor.foreground": "#E5E5EA",
-        "editorLineNumber.foreground": "#48484A",
-        "editorLineNumber.activeForeground": "#98989D",
-        "editor.lineHighlightBackground": "#2C2C2E",
-        "editorCursor.foreground": "#E5E5EA",
-        "editor.selectionBackground": "#0A84FF30",
-        "editor.inactiveSelectionBackground": "#38383A",
-        "editorIndentGuide.background1": "#38383A",
-        "editorIndentGuide.activeBackground1": "#48484A",
-        "editorWidget.background": "#2C2C2E",
-        "editorSuggestWidget.background": "#2C2C2E",
-        "editorSuggestWidget.selectedBackground": "#0A84FF30"
-      }
-    });
+    applyEditorTheme();
 
     editor = monaco.editor.create(document.getElementById("editor"), {
       value: "",
@@ -453,6 +492,16 @@
         }
       }
 
+      function focusEditorAtClientPoint(clientX, clientY) {
+        if (!isClientPointInsideEditor(clientX, clientY)) {
+          return false;
+        }
+
+        placeCursorAtClientPoint(clientX, clientY);
+        focusEditorInput();
+        return true;
+      }
+
       function isClientPointInsideEditor(clientX, clientY) {
         var domNode = editor.getDomNode();
         if (!domNode) {
@@ -502,8 +551,15 @@
             return;
           }
 
-          placeCursorAtClientPoint(e.clientX, e.clientY);
-          focusEditorInput();
+          focusEditorAtClientPoint(e.clientX, e.clientY);
+        }, true);
+
+        domNode.addEventListener('click', function(e) {
+          if (typeof e.button === "number" && e.button !== 0) {
+            return;
+          }
+
+          focusEditorAtClientPoint(e.clientX, e.clientY);
         }, true);
 
         domNode.addEventListener('touchstart', function(e) {
@@ -519,8 +575,7 @@
             clientY: touch.clientY
           };
 
-          placeCursorAtClientPoint(touch.clientX, touch.clientY);
-          focusEditorInput();
+          focusEditorAtClientPoint(touch.clientX, touch.clientY);
         }, { passive: true });
 
         domNode.addEventListener('touchend', function(e) {
@@ -550,8 +605,7 @@
             var targetClientX = touch.clientX;
             var targetClientY = touch.clientY;
             window.requestAnimationFrame(function () {
-              placeCursorAtClientPoint(targetClientX, targetClientY);
-              focusEditorInput();
+              focusEditorAtClientPoint(targetClientX, targetClientY);
             });
           }
 
@@ -621,10 +675,48 @@
       });
       monaco.editor.setModelMarkers(model, "igcse-compiler", markers);
     }
+
+    if (data.type === "setTheme" && data.theme) {
+      currentTheme = data.theme;
+      applyEditorTheme();
+    }
+
+    if (data.type === "resume") {
+      var model = editor.getModel();
+      if (!model) return;
+
+      var nextValue = typeof data.value === "string" ? data.value : "";
+      if (model.getValue() !== nextValue) {
+        isProgrammaticEdit = true;
+        editor.setValue(nextValue);
+        isProgrammaticEdit = false;
+      }
+
+      var resumeMarkers = (data.markers || []).map(function (d) {
+        return {
+          startLineNumber: d.line,
+          startColumn: d.column,
+          endLineNumber: d.endLine,
+          endColumn: Math.max(d.endColumn + 1, d.column + 1),
+          message: d.code + ": " + d.message + (d.hint ? "\nHint: " + d.hint : ""),
+          severity: d.severity === "error" ? 8 : d.severity === "warning" ? 4 : 2
+        };
+      });
+      monaco.editor.setModelMarkers(model, "igcse-compiler", resumeMarkers);
+
+      window.requestAnimationFrame(function () {
+        editor.layout();
+        window.requestAnimationFrame(function () {
+          editor.layout();
+          postToRN({ type: "resumed" });
+        });
+      });
+    }
   }
 
   document.addEventListener("message", handleMessage);
   window.addEventListener("message", handleMessage);
+  applySurfaceTheme();
 })();
 </script>
 </body>

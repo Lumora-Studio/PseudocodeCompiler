@@ -25,8 +25,26 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const themeBootScript = `(() => {
+    try {
+      const stored = window.localStorage.getItem("igcse-theme-mode");
+      const mode = stored === "dark" || stored === "light" || stored === "system" ? stored : "system";
+      const resolved = mode === "system"
+        ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+        : mode;
+      document.documentElement.dataset.theme = resolved;
+      document.documentElement.style.colorScheme = resolved;
+    } catch {
+      document.documentElement.dataset.theme = "dark";
+      document.documentElement.style.colorScheme = "dark";
+    }
+  })();`;
+
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
+      </head>
       <body className="antialiased">{children}</body>
     </html>
   );

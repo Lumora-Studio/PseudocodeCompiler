@@ -3,7 +3,7 @@ import { Stack, useRouter } from "expo-router";
 import { Platform } from "react-native";
 import { enableScreens } from "react-native-screens";
 import { JsStack } from "../layouts/JsStack";
-import { colors } from "../lib/theme";
+import { ThemeProvider, useAppTheme } from "../lib/theme";
 
 const platformWithPad = Platform as typeof Platform & { isPad?: boolean };
 const isPad = Platform.OS === "ios" && platformWithPad.isPad === true;
@@ -14,29 +14,28 @@ if (isPad) {
   enableScreens(false);
 }
 
-const tabletScreenOptions = {
-  animation: "none" as const,
-  cardStyle: { backgroundColor: colors.bg },
-  headerStyle: { backgroundColor: colors.bg },
-  headerTintColor: colors.text,
-  headerTitleStyle: { fontWeight: "600" as const },
-};
-
-const phoneScreenOptions = {
-  animation: "none" as const,
-  contentStyle: { backgroundColor: colors.bg },
-  headerStyle: { backgroundColor: colors.bg },
-  headerTintColor: colors.text,
-  headerTitleStyle: { fontWeight: "600" as const },
-};
-
 const tabletManualScreenOptions = {
   title: "Pseudocode Guidelines",
   presentation: "modal" as const,
 };
 
-export default function RootLayout() {
+function RootNavigator() {
   const router = useRouter();
+  const { colors, isDark } = useAppTheme();
+  const tabletScreenOptions = {
+    animation: "none" as const,
+    cardStyle: { backgroundColor: colors.bg },
+    headerStyle: { backgroundColor: colors.bg },
+    headerTintColor: colors.text,
+    headerTitleStyle: { fontWeight: "600" as const },
+  };
+  const phoneScreenOptions = {
+    animation: "none" as const,
+    contentStyle: { backgroundColor: colors.bg },
+    headerStyle: { backgroundColor: colors.bg },
+    headerTintColor: colors.text,
+    headerTitleStyle: { fontWeight: "600" as const },
+  };
   const phoneManualScreenOptions =
     Platform.OS === "ios"
       ? {
@@ -62,7 +61,7 @@ export default function RootLayout() {
 
   return (
     <>
-      <StatusBar style="light" />
+      <StatusBar style={isDark ? "light" : "dark"} />
       {isPad ? (
         <JsStack
           detachInactiveScreens={false}
@@ -96,5 +95,13 @@ export default function RootLayout() {
         </Stack>
       )}
     </>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <ThemeProvider>
+      <RootNavigator />
+    </ThemeProvider>
   );
 }

@@ -9,7 +9,13 @@ import {
 } from "react-native";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 import type { Diagnostic } from "@igcse/compiler/types";
-import { colors, fonts, radii } from "../lib/theme";
+import {
+  createThemedStyleSheet,
+  fonts,
+  radii,
+  useAppTheme,
+  useThemedStyles,
+} from "../lib/theme";
 
 // @ts-expect-error Expo bundles local HTML assets for WebView sources.
 import editorHtml from "../assets/editor.html";
@@ -19,11 +25,14 @@ interface EditorWebViewProps {
   onChange: (value: string) => void;
   diagnostics: Diagnostic[];
   onReady?: () => void;
+  restoreToken?: number;
 }
 
 const previewLineWidths = ["88%", "74%", "68%", "80%", "56%"] as const;
 
 function EditorLoadingOverlay() {
+  const { colors, resolvedTheme, isDark } = useAppTheme();
+  const styles = useThemedStyles(useStyles);
   const pulse = useRef(new Animated.Value(0)).current;
   const drift = useRef(new Animated.Value(0)).current;
 
@@ -168,14 +177,19 @@ export function EditorWebView({
   onChange,
   diagnostics,
   onReady,
+  restoreToken = 0,
 }: EditorWebViewProps) {
+  const { colors, resolvedTheme } = useAppTheme();
+  const styles = useThemedStyles(useStyles);
   const webViewRef = useRef<WebView>(null);
   const isReadyRef = useRef(false);
   const currentValueRef = useRef(initialValue);
   const pendingValueRef = useRef<string | null>(initialValue);
   const pendingDiagnosticsRef = useRef<Diagnostic[]>(diagnostics);
+  const latestRestoreTokenRef = useRef(restoreToken);
   const webViewOpacity = useRef(new Animated.Value(0.04)).current;
   const overlayOpacity = useRef(new Animated.Value(1)).current;
+  const [webViewInstanceKey, setWebViewInstanceKey] = useState(0);
   const [showFallbackEditor, setShowFallbackEditor] = useState(false);
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(true);
   const [didInitFail, setDidInitFail] = useState(false);
@@ -233,6 +247,20 @@ export function EditorWebView({
     });
   }, [injectMessage]);
 
+  const syncTheme = useCallback(() => {
+    if (!isReadyRef.current) {
+      return;
+    }
+
+    injectMessage({
+      type: "setTheme",
+      theme: {
+        resolvedTheme,
+        colors,
+      },
+    });
+  }, [colors, injectMessage, resolvedTheme]);
+
   const handleMessage = useCallback(
     (event: WebViewMessageEvent) => {
       let data: { type: string; value?: string };
@@ -252,6 +280,7 @@ export function EditorWebView({
           injectMessage({ type: "setValue", value: pendingValueRef.current });
           pendingValueRef.current = null;
         }
+        syncTheme();
         syncDiagnostics();
         revealEditor();
         onReady?.();
@@ -269,8 +298,20 @@ export function EditorWebView({
         onChange(data.value);
       }
     },
-    [injectMessage, onChange, onReady, revealEditor, showFallback, syncDiagnostics],
+    [
+      injectMessage,
+      onChange,
+      onReady,
+      revealEditor,
+      showFallback,
+      syncTheme,
+      syncDiagnostics,
+    ],
   );
+
+  useEffect(() => {
+    syncTheme();
+  }, [syncTheme]);
 
   useEffect(() => {
     pendingDiagnosticsRef.current = diagnostics;
@@ -305,10 +346,29 @@ export function EditorWebView({
     injectMessage({ type: "setValue", value: initialValue });
   }, [initialValue, injectMessage]);
 
+  useEffect(() => {
+    if (restoreToken === 0 || restoreToken === latestRestoreTokenRef.current) {
+      return;
+    }
+
+    latestRestoreTokenRef.current = restoreToken;
+    isReadyRef.current = false;
+    setDidInitFail(false);
+    setShowFallbackEditor(false);
+    setShowLoadingOverlay(true);
+    overlayOpacity.stopAnimation();
+    webViewOpacity.stopAnimation();
+    overlayOpacity.setValue(1);
+    webViewOpacity.setValue(0.04);
+    pendingValueRef.current = currentValueRef.current;
+    setWebViewInstanceKey((current) => current + 1);
+  }, [overlayOpacity, restoreToken, webViewOpacity]);
+
   return (
     <View style={styles.container}>
       <Animated.View style={[styles.webviewShell, { opacity: webViewOpacity }]}>
         <WebView
+          key={webViewInstanceKey}
           ref={webViewRef}
           source={editorHtml}
           style={[styles.webview, showFallbackEditor && styles.webviewHidden]}
@@ -345,7 +405,7 @@ export function EditorWebView({
           autoCapitalize="none"
           autoCorrect={false}
           spellCheck={false}
-          keyboardAppearance="dark"
+          keyboardAppearance={colors.inputKeyboardAppearance}
           selectionColor={colors.accent}
           textAlignVertical="top"
           scrollEnabled
@@ -363,7 +423,7 @@ export function EditorWebView({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyleSheet(({ colors, isDark }) => ({
   container: {
     flex: 1,
     minHeight: 0,
@@ -409,14 +469,14 @@ const styles = StyleSheet.create({
     borderRadius: 94,
     borderWidth: 1,
     borderColor: colors.accentSoft,
-    backgroundColor: "rgba(10, 132, 255, 0.04)",
+    backgroundColor: isDark ? "rgba(10, 132, 255, 0.04)" : "rgba(11, 110, 79, 0.05)",
   },
   loadingOrbCore: {
     position: "absolute",
     width: 110,
     height: 110,
     borderRadius: 55,
-    backgroundColor: "rgba(10, 132, 255, 0.14)",
+    backgroundColor: isDark ? "rgba(10, 132, 255, 0.14)" : "rgba(11, 110, 79, 0.14)",
     shadowColor: colors.accent,
     shadowOpacity: 0.26,
     shadowRadius: 28,
@@ -429,8 +489,8 @@ const styles = StyleSheet.create({
     padding: 18,
     borderRadius: radii.section,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.separator,
-    backgroundColor: "rgba(44, 44, 46, 0.92)",
+    borderColor: colors.border,
+    backgroundColor: isDark ? "rgba(44, 44, 46, 0.92)" : "rgba(251, 248, 242, 0.94)",
   },
   loadingPanelHeader: {
     gap: 8,
@@ -484,7 +544,7 @@ const styles = StyleSheet.create({
   loadingCodeLine: {
     height: 10,
     borderRadius: 5,
-    backgroundColor: "rgba(229, 229, 234, 0.12)",
+    backgroundColor: isDark ? "rgba(229, 229, 234, 0.12)" : "rgba(36, 27, 21, 0.1)",
   },
   loadingCodeLineKeyword: {
     backgroundColor: "rgba(252, 95, 163, 0.38)",
@@ -500,6 +560,6 @@ const styles = StyleSheet.create({
     top: -12,
     bottom: -12,
     width: 84,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    backgroundColor: isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(255, 255, 255, 0.28)",
   },
-});
+}));

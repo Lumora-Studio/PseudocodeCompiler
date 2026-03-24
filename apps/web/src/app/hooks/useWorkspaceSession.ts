@@ -286,6 +286,9 @@ export function useWorkspaceSession(defaultSource: string) {
     }
 
     const document = getActiveDocument(currentWorkspace);
+    if (!document) {
+      return null;
+    }
     return {
       document,
       result: compilePseudocode({
@@ -322,6 +325,7 @@ export function useWorkspaceSession(defaultSource: string) {
 
     const payload = compileSource(target.workspace);
     if (!payload) {
+      updateTerminalOutput(target.panelId, "Create your first file to compile and run code.");
       return null;
     }
 
@@ -353,6 +357,7 @@ export function useWorkspaceSession(defaultSource: string) {
 
     const payload = compileSource(target.workspace);
     if (!payload) {
+      updateTerminalOutput(target.panelId, "Create your first file to compile and run code.");
       return;
     }
 
@@ -667,7 +672,10 @@ export function useWorkspaceSession(defaultSource: string) {
       }
 
       resolvePendingInput(null);
-      updateTerminalOutput(resolvedPanelId, `Terminal ready for ${activeDocument.name}.`);
+      updateTerminalOutput(
+        resolvedPanelId,
+        activeDocument ? `Terminal ready for ${activeDocument.name}.` : "Create your first file to run code.",
+      );
     },
     [activeDocument, resolvePendingInput, updateTerminalOutput],
   );

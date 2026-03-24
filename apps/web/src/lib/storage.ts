@@ -1,12 +1,31 @@
 import { openDB } from "idb";
 import type { WorkspaceState } from "@igcse/workspace";
-import { migratePersistedWorkspace } from "@igcse/workspace";
+import { createEmptyWorkspace, migratePersistedWorkspace } from "@igcse/workspace";
 
 const DB_NAME = "igcse-pseudocode-workspace";
 const STORE_NAME = "workspace";
 const PRIMARY_KEY = "current";
 const LEGACY_WORKSPACE_KEY = "igcse-pseudocode-workspace-v1";
 const LEGACY_SOURCE_KEY = "igcse-editor-source-v2";
+const RESET_WORKSPACE_ON_LOAD = process.env.NEXT_PUBLIC_RESET_WORKSPACE_ON_DEV === "1";
+const DEV_RESET_SESSION_KEY = "igcse-reset-workspace-on-dev-applied";
+
+function shouldResetWorkspaceForDevSession(): boolean {
+  if (!RESET_WORKSPACE_ON_LOAD || typeof window === "undefined") {
+    return false;
+  }
+
+  try {
+    if (window.sessionStorage.getItem(DEV_RESET_SESSION_KEY) === "1") {
+      return false;
+    }
+
+    window.sessionStorage.setItem(DEV_RESET_SESSION_KEY, "1");
+    return true;
+  } catch {
+    return true;
+  }
+}
 
 async function getDatabase() {
   return openDB(DB_NAME, 1, {
@@ -29,6 +48,17 @@ export async function saveWorkspace(state: WorkspaceState): Promise<void> {
 
 export async function migrateWorkspace(sampleSource: string): Promise<WorkspaceState> {
   const database = await getDatabase();
+
+  if (shouldResetWorkspaceForDevSession()) {
+    const emptyWorkspace = createEmptyWorkspace();
+    await database.put(STORE_NAME, emptyWorkspace, PRIMARY_KEY);
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(LEGACY_WORKSPACE_KEY);
+      window.localStorage.removeItem(LEGACY_SOURCE_KEY);
+    }
+    return emptyWorkspace;
+  }
+
   const persisted = await database.get(STORE_NAME, PRIMARY_KEY);
   const legacyWorkspaceRaw =
     typeof window !== "undefined" ? window.localStorage.getItem(LEGACY_WORKSPACE_KEY) : null;
@@ -44,10 +74,13 @@ export async function migrateWorkspace(sampleSource: string): Promise<WorkspaceS
     }
   }
 
-  const state = migratePersistedWorkspace(persisted ?? legacyWorkspace, {
-    sampleSource,
-    legacySource,
-  });
+  const state =
+    persisted || legacyWorkspace || legacySource
+      ? migratePersistedWorkspace(persisted ?? legacyWorkspace, {
+          sampleSource,
+          legacySource,
+        })
+      : createEmptyWorkspace();
 
   if (!persisted) {
     await database.put(STORE_NAME, state, PRIMARY_KEY);

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  InteractionManager,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -18,11 +20,17 @@ import {
   type WorkspaceNode,
   type WorkspaceState,
 } from "@igcse/workspace";
-import { colors, fonts, radii } from "../lib/theme";
+import {
+  createThemedStyleSheet,
+  fonts,
+  radii,
+  useAppTheme,
+  useThemedStyles,
+} from "../lib/theme";
 
 interface WorkspaceTreeProps {
   workspace: WorkspaceState;
-  activeDocumentId: string;
+  activeDocumentId: string | null;
   onSelectDocument: (documentId: string) => void;
   onToggleFolder: (folderId: string) => void;
   onCreateFolder: (parentId?: string) => void;
@@ -223,6 +231,7 @@ function deriveTarget(
 }
 
 function FolderIcon({ nested }: { nested: boolean }) {
+  const { colors } = useAppTheme();
   return (
     <Feather
       name="folder"
@@ -233,6 +242,7 @@ function FolderIcon({ nested }: { nested: boolean }) {
 }
 
 function DocumentIcon({ active }: { active: boolean }) {
+  const { colors } = useAppTheme();
   return (
     <Feather
       name="file-text"
@@ -261,6 +271,8 @@ export function WorkspaceTree({
   onDeleteNodes,
   onMoveNodes,
 }: WorkspaceTreeProps) {
+  const { colors } = useAppTheme();
+  const styles = useThemedStyles(useStyles);
   const flattened = useMemo(() => flattenVisibleNodes(workspace), [workspace]);
   const visibleNodeIds = useMemo(
     () => flattened.map(({ node }) => node.id),
@@ -278,12 +290,17 @@ export function WorkspaceTree({
   const expandHoverFolderIdRef = useRef<string | null>(null);
   const pointerModifiersRef = useRef<PointerModifierSnapshot | null>(null);
   const pendingPressRef = useRef<PendingPressState | null>(null);
+  const pendingRenameNodeIdRef = useRef<string | null>(null);
+  const renameInputRef = useRef<TextInput | null>(null);
+  const renameFocusTaskRef = useRef<
+    ReturnType<typeof InteractionManager.runAfterInteractions> | null
+  >(null);
   const suppressPressRef = useRef(false);
   const suppressPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const touchGestureRef = useRef<TouchGestureState | null>(null);
   const draggingNodeIdsRef = useRef<string[]>([]);
   const [selectionState, setSelectionState] = useState<string[]>([
-    activeDocumentId,
+    ...(activeDocumentId ? [activeDocumentId] : []),
   ]);
   const [anchorState, setAnchorState] = useState<string | null>(activeDocumentId);
   const [readyToDragNodeId, setReadyToDragNodeId] = useState<string | null>(null);
@@ -305,7 +322,11 @@ export function WorkspaceTree({
     const nextSelection = visibleNodeIds.filter((nodeId) =>
       selectionState.includes(nodeId),
     );
-    return nextSelection.length > 0 ? nextSelection : [activeDocumentId];
+    return nextSelection.length > 0
+      ? nextSelection
+      : activeDocumentId
+        ? [activeDocumentId]
+        : [];
   }, [activeDocumentId, selectionState, visibleNodeIds]);
   const selectedNodeSet = useMemo(
     () => new Set(selectedNodeIds),
@@ -389,7 +410,11 @@ export function WorkspaceTree({
         currentSelection.includes(nodeId),
       );
       const fallbackSelection =
-        nextSelection.length > 0 ? nextSelection : [activeDocumentId];
+        nextSelection.length > 0
+          ? nextSelection
+          : activeDocumentId
+            ? [activeDocumentId]
+            : [];
 
       return areNodeIdArraysEqual(currentSelection, fallbackSelection)
         ? currentSelection
@@ -417,12 +442,28 @@ export function WorkspaceTree({
       clearPendingPress();
       clearDragState();
       clearTouchGesture();
+      renameFocusTaskRef.current?.cancel?.();
       if (suppressPressTimerRef.current) {
         clearTimeout(suppressPressTimerRef.current);
       }
     },
     [clearDragState, clearPendingPress, clearTouchGesture],
   );
+
+  const dismissRenameDialog = useCallback(() => {
+    renameFocusTaskRef.current?.cancel?.();
+    renameFocusTaskRef.current = null;
+    renameInputRef.current?.blur();
+    setRenameDialog(null);
+    setRenameValue("");
+  }, []);
+
+  const focusRenameInput = useCallback(() => {
+    renameFocusTaskRef.current?.cancel?.();
+    renameFocusTaskRef.current = InteractionManager.runAfterInteractions(() => {
+      renameInputRef.current?.focus();
+    });
+  }, []);
 
   const scheduleFolderExpand = useCallback(
     (folderId: string) => {
@@ -559,16 +600,36 @@ export function WorkspaceTree({
     [onSelectDocument],
   );
 
-  const openRenameDialog = useCallback(
-    (node: WorkspaceNode) => {
+  const presentRenameDialog = useCallback(
+    (nodeId: string) => {
+      const node = workspace.nodes[nodeId];
+      if (!node) {
+        return;
+      }
+
       clearPendingPress();
-      setActionSheet(null);
       setSelectionState([node.id]);
       setAnchorState(node.id);
       setRenameValue(node.name);
       setRenameDialog({ nodeId: node.id });
     },
-    [clearPendingPress],
+    [clearPendingPress, workspace.nodes],
+  );
+
+  const openRenameDialog = useCallback(
+    (node: WorkspaceNode) => {
+      if (Platform.OS === "ios" && actionSheet) {
+        clearPendingPress();
+        pendingRenameNodeIdRef.current = node.id;
+        setActionSheet(null);
+        return;
+      }
+
+      pendingRenameNodeIdRef.current = null;
+      setActionSheet(null);
+      presentRenameDialog(node.id);
+    },
+    [actionSheet, clearPendingPress, presentRenameDialog],
   );
 
   const openActionSheetForNode = useCallback(
@@ -579,6 +640,16 @@ export function WorkspaceTree({
         : [node.id];
       setSelectionState(nextSelection);
       setAnchorState(node.id);
+      if (Platform.OS === "ios") {
+        requestAnimationFrame(() => {
+          setActionSheet({
+            nodeId: node.id,
+            selection: nextSelection,
+          });
+        });
+        return;
+      }
+
       setActionSheet({
         nodeId: node.id,
         selection: nextSelection,
@@ -774,11 +845,11 @@ export function WorkspaceTree({
       return;
     }
 
+    renameInputRef.current?.blur();
     if (onRenameNode(renameDialog.nodeId, renameValue)) {
-      setRenameDialog(null);
-      setRenameValue("");
+      dismissRenameDialog();
     }
-  }, [onRenameNode, renameDialog, renameValue]);
+  }, [dismissRenameDialog, onRenameNode, renameDialog, renameValue]);
 
   const moveSelectionToTopLevel = useCallback(
     (nodeIds: string[]) => {
@@ -1069,6 +1140,21 @@ export function WorkspaceTree({
         transparent
         animationType="fade"
         onRequestClose={() => setActionSheet(null)}
+        onDismiss={() => {
+          if (Platform.OS !== "ios") {
+            return;
+          }
+
+          const pendingRenameNodeId = pendingRenameNodeIdRef.current;
+          if (!pendingRenameNodeId) {
+            return;
+          }
+
+          pendingRenameNodeIdRef.current = null;
+          requestAnimationFrame(() => {
+            presentRenameDialog(pendingRenameNodeId);
+          });
+        }}
       >
         <View style={styles.actionSheetOverlay}>
           <Pressable
@@ -1181,18 +1267,13 @@ export function WorkspaceTree({
         visible={renameDialog !== null}
         transparent
         animationType="fade"
-        onRequestClose={() => {
-          setRenameDialog(null);
-          setRenameValue("");
-        }}
+        onShow={focusRenameInput}
+        onRequestClose={dismissRenameDialog}
       >
         <View style={styles.actionSheetOverlay}>
           <Pressable
             style={StyleSheet.absoluteFill}
-            onPress={() => {
-              setRenameDialog(null);
-              setRenameValue("");
-            }}
+            onPress={dismissRenameDialog}
           />
           <View style={styles.renameDialogWrap}>
             <View style={styles.renameDialogCard}>
@@ -1214,9 +1295,9 @@ export function WorkspaceTree({
 
               <View style={styles.renameDialogBody}>
                 <TextInput
+                  ref={renameInputRef}
                   value={renameValue}
                   onChangeText={setRenameValue}
-                  autoFocus
                   selectTextOnFocus
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -1234,10 +1315,7 @@ export function WorkspaceTree({
                     styles.renameDialogButton,
                     styles.renameDialogButtonSecondary,
                   ]}
-                  onPress={() => {
-                    setRenameDialog(null);
-                    setRenameValue("");
-                  }}
+                  onPress={dismissRenameDialog}
                 >
                   <Text style={styles.renameDialogButtonText}>Cancel</Text>
                 </Pressable>
@@ -1260,7 +1338,7 @@ export function WorkspaceTree({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyleSheet(({ colors, isDark }) => ({
   shell: {
     flex: 1,
     minHeight: 0,
@@ -1280,13 +1358,13 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   headerTitle: {
-    color: colors.text2,
+    color: colors.textSecondary,
     fontFamily: fonts.sans,
     fontSize: 13,
     fontWeight: "600",
   },
   headerCaption: {
-    color: colors.text3,
+    color: colors.textTertiary,
     fontFamily: fonts.sans,
     fontSize: 11,
   },
@@ -1315,11 +1393,11 @@ const styles = StyleSheet.create({
     minWidth: 188,
     overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.separator,
+    borderColor: colors.border,
     borderRadius: 12,
-    backgroundColor: colors.surface,
-    shadowColor: "#000000",
-    shadowOpacity: 0.22,
+    backgroundColor: colors.panel,
+    shadowColor: colors.shadow,
+    shadowOpacity: isDark ? 0.22 : 0.14,
     shadowRadius: 12,
     shadowOffset: {
       width: 0,
@@ -1342,7 +1420,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   createMenuButtonText: {
-    color: colors.text,
+    color: colors.textPrimary,
     fontFamily: fonts.sans,
     fontSize: 14,
     fontWeight: "500",
@@ -1401,20 +1479,20 @@ const styles = StyleSheet.create({
   rowText: {
     flex: 1,
     minWidth: 0,
-    color: colors.text2,
+    color: colors.textSecondary,
     fontFamily: fonts.sans,
     fontSize: 14,
   },
   rowTextMuted: {
-    color: colors.text2,
+    color: colors.textSecondary,
   },
   rowTextActive: {
-    color: colors.text,
+    color: colors.textPrimary,
     fontWeight: "500",
   },
   actionSheetOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: colors.overlay,
   },
   actionSheetWrap: {
     flex: 1,
@@ -1425,16 +1503,16 @@ const styles = StyleSheet.create({
   actionSheetCard: {
     overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.separator,
+    borderColor: colors.border,
     borderRadius: radii.section,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.panel,
   },
   actionSheetHeader: {
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.separator,
-    backgroundColor: colors.surface2,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.panelRaised,
   },
   actionSheetEyebrow: {
     color: colors.accent,
@@ -1446,7 +1524,7 @@ const styles = StyleSheet.create({
   },
   actionSheetTitle: {
     marginTop: 4,
-    color: colors.text,
+    color: colors.textPrimary,
     fontFamily: fonts.sans,
     fontSize: 16,
     fontWeight: "600",
@@ -1456,44 +1534,45 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 16,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.separator,
+    borderTopColor: colors.border,
   },
   actionSheetButtonText: {
-    color: colors.text,
+    color: colors.textPrimary,
     fontFamily: fonts.sans,
     fontSize: 15,
     fontWeight: "500",
   },
   actionSheetButtonTextDanger: {
-    color: colors.red,
+    color: colors.danger,
   },
   renameDialogWrap: {
     flex: 1,
     justifyContent: "center",
     paddingHorizontal: 20,
+    backgroundColor: colors.overlay,
   },
   renameDialogCard: {
     overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.separator,
+    borderColor: colors.border,
     borderRadius: radii.section,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.panel,
   },
   renameDialogHeader: {
     gap: 4,
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 12,
-    backgroundColor: colors.surface2,
+    backgroundColor: colors.panelRaised,
   },
   renameDialogTitle: {
-    color: colors.text,
+    color: colors.textPrimary,
     fontFamily: fonts.sans,
     fontSize: 17,
     fontWeight: "600",
   },
   renameDialogCaption: {
-    color: colors.text3,
+    color: colors.textTertiary,
     fontFamily: fonts.sans,
     fontSize: 13,
   },
@@ -1505,10 +1584,10 @@ const styles = StyleSheet.create({
   renameInput: {
     minHeight: 46,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.separator,
+    borderColor: colors.border,
     borderRadius: radii.compactButton,
-    backgroundColor: colors.bg,
-    color: colors.text,
+    backgroundColor: colors.background,
+    color: colors.textPrimary,
     fontFamily: fonts.sans,
     fontSize: 15,
     paddingHorizontal: 12,
@@ -1530,15 +1609,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent,
   },
   renameDialogButtonSecondary: {
-    backgroundColor: colors.surface2,
+    backgroundColor: colors.panelRaised,
   },
   renameDialogButtonDisabled: {
     opacity: 0.45,
   },
   renameDialogButtonText: {
-    color: colors.text,
+    color: colors.textPrimary,
     fontFamily: fonts.sans,
     fontSize: 14,
     fontWeight: "600",
   },
-});
+}));

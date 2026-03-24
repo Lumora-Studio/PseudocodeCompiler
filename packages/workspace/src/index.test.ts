@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  createEmptyWorkspace,
   createDefaultWorkspace,
   createDocument,
   createFolder,
@@ -51,11 +52,14 @@ describe("workspace helpers", () => {
     );
   });
 
-  it("blocks deleting the last remaining document", () => {
+  it("allows deleting the last remaining document", () => {
     const state = createDefaultWorkspace({ sampleSource: SAMPLE_SOURCE });
-    const documentId = getActiveDocument(state).id;
+    const documentId = getActiveDocument(state)?.id;
 
-    expect(() => deleteNode(state, documentId)).toThrow("At least one document must remain.");
+    expect(documentId).toBeDefined();
+    const next = deleteNode(state, documentId!);
+    expect(getActiveDocument(next)).toBeNull();
+    expect(Object.values(next.nodes).filter((node) => node.type === "document")).toHaveLength(0);
   });
 
   it("supports move and reorder within folders", () => {
@@ -106,8 +110,18 @@ describe("workspace helpers", () => {
     state = setActiveDocument(state, "doc-test");
     state = updateDocumentSource(state, "doc-test", "OUTPUT 2");
 
-    expect(getActiveDocument(state).id).toBe("doc-test");
-    expect(getActiveDocument(state).source).toBe("OUTPUT 2");
+    expect(getActiveDocument(state)?.id).toBe("doc-test");
+    expect(getActiveDocument(state)?.source).toBe("OUTPUT 2");
+  });
+
+  it("supports an empty workspace until a file is created", () => {
+    let state = createEmptyWorkspace("2026-03-15T00:00:00.000Z");
+
+    expect(getActiveDocument(state)).toBeNull();
+
+    state = createDocument(state, { id: "doc-first", name: "First" });
+
+    expect(getActiveDocument(state)?.id).toBe("doc-first");
   });
 
   it("renames with sibling de-duplication", () => {
@@ -128,8 +142,8 @@ describe("workspace migration", () => {
       now: "2026-03-15T00:00:00.000Z",
     });
 
-    expect(getActiveDocument(state).name).toBe("main.pseudo");
-    expect(getActiveDocument(state).source).toBe('OUTPUT "Legacy"');
+    expect(getActiveDocument(state)?.name).toBe("main.pseudo");
+    expect(getActiveDocument(state)?.source).toBe('OUTPUT "Legacy"');
   });
 
   it("migrates a legacy workspace snapshot", () => {
@@ -138,14 +152,14 @@ describe("workspace migration", () => {
       { sampleSource: SAMPLE_SOURCE },
     );
 
-    expect(getActiveDocument(state).source).toBe('OUTPUT "Saved"');
+    expect(getActiveDocument(state)?.source).toBe('OUTPUT "Saved"');
   });
 
   it("creates a default workspace when persisted data is missing", () => {
     const state = migratePersistedWorkspace(undefined, { sampleSource: SAMPLE_SOURCE });
 
     expect(state.rootFolderId).toBe(ROOT_FOLDER_ID);
-    expect(getActiveDocument(state).source).toBe(SAMPLE_SOURCE);
+    expect(getActiveDocument(state)?.source).toBe(SAMPLE_SOURCE);
   });
 
   it("normalizes persisted root folders to the explorer root name", () => {

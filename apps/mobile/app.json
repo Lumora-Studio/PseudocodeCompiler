@@ -5,7 +5,7 @@
     "version": "0.1.8",
     "orientation": "default",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "automatic",
     "scheme": "igcse-compiler",
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -44,7 +44,7 @@
       [
         "expo-screen-orientation",
         {
-          "initialOrientation": "LANDSCAPE"
+          "initialOrientation": "DEFAULT"
         }
       ]
     ],

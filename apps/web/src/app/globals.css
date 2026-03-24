@@ -122,7 +122,8 @@
     U+FFFD;
 }
 
-:root {
+:root,
+:root[data-theme="dark"] {
   --font-sans: "Inter";
   --font-mono: "Fira Code";
   --bg: #1C1C1E;
@@ -155,6 +156,39 @@
   --code-comment: #6C7986;
   --code-func: #A167E6;
   --code-text: #E5E5EA;
+}
+
+:root[data-theme="light"] {
+  --bg: #FFFFFF;
+  --sidebar: #FAFAFA;
+  --titlebar: #FFFFFF;
+  --surface: #FFFFFF;
+  --surface2: #F5F5F5;
+  --surface3: #EDEDED;
+  --separator: #E5E5E5;
+  --text: #111111;
+  --text2: #4B5563;
+  --text3: #9CA3AF;
+  --accent: #0B6E4F;
+  --green: #0B8F55;
+  --red: #C03B2B;
+  --orange: #B45309;
+  --yellow: #CA8A04;
+  --selected: rgba(11, 110, 79, 0.14);
+  --hover: rgba(17, 17, 17, 0.04);
+  --line-num: #CFCFCF;
+  --traffic-red: #D95C52;
+  --traffic-yellow: #D6A33F;
+  --traffic-green: #55A66F;
+  --code-keyword: #9B2D63;
+  --code-variable: #2D7A6D;
+  --code-type: #0F7A94;
+  --code-string: #B45438;
+  --code-number: #8D6A12;
+  --code-operator: #111111;
+  --code-comment: #9CA3AF;
+  --code-func: #7856B3;
+  --code-text: #111111;
 }
 
 html {

@@ -54,7 +54,7 @@ export interface WorkspaceExplorerPanelInstance extends WorkspacePanelInstanceBa
 export interface WorkspaceEditorPanelInstance extends WorkspacePanelInstanceBase {
   kind: "editor";
   openDocumentIds: string[];
-  activeDocumentId: string;
+  activeDocumentId: string | null;
 }
 
 export interface WorkspaceTerminalPanelInstance extends WorkspacePanelInstanceBase {
@@ -97,7 +97,7 @@ export type WorkspaceLayoutNode = WorkspaceLayoutStackNode | WorkspaceLayoutSpli
 export interface WorkspaceState {
   version: number;
   rootFolderId: string;
-  activeDocumentId: string;
+  activeDocumentId: string | null;
   nodes: Record<string, WorkspaceNode>;
   expandedFolderIds?: string[];
   recentDocumentIds?: string[];
@@ -111,7 +111,7 @@ export interface WorkspaceState {
 interface WorkspaceStateV1 {
   version: 1;
   rootFolderId: string;
-  activeDocumentId: string;
+  activeDocumentId: string | null;
   nodes: Record<string, WorkspaceNode>;
   expandedFolderIds?: string[];
   recentDocumentIds?: string[];
@@ -209,6 +209,37 @@ export function createDefaultWorkspace(options: CreateWorkspaceOptions): Workspa
   });
 }
 
+export function createEmptyWorkspace(now?: string): WorkspaceState {
+  const timestamp = now ?? new Date().toISOString();
+  const root: WorkspaceFolderNode = {
+    id: ROOT_FOLDER_ID,
+    type: "folder",
+    parentId: null,
+    name: ROOT_FOLDER_NAME,
+    order: 0,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+
+  const docking = createDefaultDockingState(null, timestamp);
+
+  return normalizeWorkspace({
+    version: WORKSPACE_VERSION,
+    rootFolderId: root.id,
+    activeDocumentId: null,
+    nodes: {
+      [root.id]: root,
+    },
+    expandedFolderIds: [root.id],
+    recentDocumentIds: [],
+    virtualFiles: {},
+    panelInstances: docking.panelInstances,
+    layout: docking.layout,
+    lastFocusedEditorPanelId: docking.lastFocusedEditorPanelId,
+    lastFocusedTerminalPanelId: docking.lastFocusedTerminalPanelId,
+  });
+}
+
 export function migratePersistedWorkspace(
   rawWorkspace: unknown,
   options: CreateWorkspaceOptions & { legacySource?: string | null },
@@ -256,7 +287,7 @@ export function validateWorkspaceState(raw: unknown): WorkspaceState | null {
 
   if (
     typeof candidate.rootFolderId !== "string" ||
-    typeof candidate.activeDocumentId !== "string" ||
+    (candidate.activeDocumentId !== null && typeof candidate.activeDocumentId !== "string") ||
     !candidate.nodes ||
     typeof candidate.nodes !== "object" ||
     !candidate.panelInstances ||
@@ -268,8 +299,13 @@ export function validateWorkspaceState(raw: unknown): WorkspaceState | null {
 
   const nodes = candidate.nodes as Record<string, WorkspaceNode>;
   const rootNode = nodes[candidate.rootFolderId];
-  const activeNode = nodes[candidate.activeDocumentId];
-  if (!rootNode || rootNode.type !== "folder" || !activeNode || activeNode.type !== "document") {
+  const activeNode =
+    typeof candidate.activeDocumentId === "string" ? nodes[candidate.activeDocumentId] : null;
+  if (
+    !rootNode ||
+    rootNode.type !== "folder" ||
+    (candidate.activeDocumentId !== null && (!activeNode || activeNode.type !== "document"))
+  ) {
     return null;
   }
 
@@ -404,10 +440,6 @@ export function deleteNodes(state: WorkspaceState, nodeIds: string[]): Workspace
     }
   }
 
-  if (countRemainingDocuments(state, removeIds) === 0) {
-    throw new Error("At least one document must remain.");
-  }
-
   const next = cloneState(state);
   for (const id of removeIds) {
     delete next.nodes[id];
@@ -416,12 +448,9 @@ export function deleteNodes(state: WorkspaceState, nodeIds: string[]): Workspace
   next.expandedFolderIds = (next.expandedFolderIds ?? []).filter((id) => !removeIds.has(id));
   next.recentDocumentIds = (next.recentDocumentIds ?? []).filter((id) => !removeIds.has(id));
 
-  if (removeIds.has(next.activeDocumentId)) {
+  if (next.activeDocumentId && removeIds.has(next.activeDocumentId)) {
     const fallbackDocument = listDocuments(next)[0];
-    if (!fallbackDocument) {
-      throw new Error("At least one document must remain.");
-    }
-    next.activeDocumentId = fallbackDocument.id;
+    next.activeDocumentId = fallbackDocument?.id ?? null;
   }
 
   return normalizeWorkspace(next);
@@ -608,10 +637,13 @@ export function setExpandedFolders(state: WorkspaceState, folderIds: string[]): 
   });
 }
 
-export function getActiveDocument(state: WorkspaceState): WorkspaceDocumentNode {
+export function getActiveDocument(state: WorkspaceState): WorkspaceDocumentNode | null {
+  if (!state.activeDocumentId) {
+    return null;
+  }
   const active = state.nodes[state.activeDocumentId];
   if (!active || active.type !== "document") {
-    throw new Error("The active document is missing.");
+    return null;
   }
   return active;
 }
@@ -698,8 +730,10 @@ export function focusPanel(state: WorkspaceState, panelId: string, now?: string)
 
   if (panel.kind === "editor") {
     next.lastFocusedEditorPanelId = panelId;
-    next.activeDocumentId = panel.activeDocumentId;
-    next.recentDocumentIds = uniqueIds([panel.activeDocumentId, ...(next.recentDocumentIds ?? [])]).slice(0, 10);
+    if (panel.activeDocumentId) {
+      next.activeDocumentId = panel.activeDocumentId;
+      next.recentDocumentIds = uniqueIds([panel.activeDocumentId, ...(next.recentDocumentIds ?? [])]).slice(0, 10);
+    }
   }
 
   if (panel.kind === "terminal") {
@@ -790,7 +824,10 @@ export function dockPanel(
 export function closePanel(state: WorkspaceState, panelId: string, now?: string): WorkspaceState {
   const panel = getPanelOrThrow(state, panelId);
   if (panel.kind === "editor" && getPanelInstancesByKind(state, "editor").length <= 1) {
-    return openDocumentInEditorPanel(state, panelId, state.activeDocumentId, now);
+    if (state.activeDocumentId) {
+      return openDocumentInEditorPanel(state, panelId, state.activeDocumentId, now);
+    }
+    return state;
   }
 
   const next = cloneState(state);
@@ -905,7 +942,9 @@ export function splitEditorPanel(
     position: direction,
     now,
   });
-  return openDocumentPanelMutationResult(created, panel.activeDocumentId, now);
+  return panel.activeDocumentId
+    ? openDocumentPanelMutationResult(created, panel.activeDocumentId, now)
+    : created;
 }
 
 export function moveEditorTab(
@@ -956,7 +995,7 @@ export function moveEditorTab(
       const fallbackId = resolveFallbackDocumentId(next, documentId);
       next.panelInstances[fromPanelId] = {
         ...fromPanel,
-        openDocumentIds: [fallbackId],
+        openDocumentIds: fallbackId ? [fallbackId] : [],
         activeDocumentId: fallbackId,
         updatedAt: timestamp,
       };
@@ -1003,7 +1042,7 @@ export function closeEditorTab(
   const next = cloneState(state);
   next.panelInstances[panelId] = {
     ...panel,
-    openDocumentIds: remaining.length > 0 ? remaining : [fallbackId],
+    openDocumentIds: remaining.length > 0 ? remaining : fallbackId ? [fallbackId] : [],
     activeDocumentId: panel.activeDocumentId === documentId ? fallbackId : panel.activeDocumentId,
     updatedAt: timestamp,
   };
@@ -1173,12 +1212,9 @@ function normalizeWorkspace(state: WorkspaceState, now?: string): WorkspaceState
     next.expandedFolderIds = uniqueIds([next.rootFolderId, ...(next.expandedFolderIds ?? [])]);
   }
 
-  if (!next.nodes[next.activeDocumentId] || next.nodes[next.activeDocumentId].type !== "document") {
+  if (!next.activeDocumentId || !next.nodes[next.activeDocumentId] || next.nodes[next.activeDocumentId].type !== "document") {
     const firstDocument = listDocuments(next)[0];
-    if (!firstDocument) {
-      throw new Error("A workspace must contain at least one document.");
-    }
-    next.activeDocumentId = firstDocument.id;
+    next.activeDocumentId = firstDocument?.id ?? null;
   }
 
   next.recentDocumentIds = uniqueIds(
@@ -1224,7 +1260,7 @@ function normalizeWorkspace(state: WorkspaceState, now?: string): WorkspaceState
   }
 
   const activeEditor = next.lastFocusedEditorPanelId ? next.panelInstances[next.lastFocusedEditorPanelId] : null;
-  if (activeEditor?.kind === "editor") {
+  if (activeEditor?.kind === "editor" && activeEditor.activeDocumentId) {
     next.activeDocumentId = activeEditor.activeDocumentId;
   }
 
@@ -1267,7 +1303,7 @@ function validateWorkspaceStateV1(raw: unknown): WorkspaceStateV1 | null {
 
   if (
     typeof candidate.rootFolderId !== "string" ||
-    typeof candidate.activeDocumentId !== "string" ||
+    (candidate.activeDocumentId !== null && typeof candidate.activeDocumentId !== "string") ||
     !candidate.nodes ||
     typeof candidate.nodes !== "object"
   ) {
@@ -1276,8 +1312,13 @@ function validateWorkspaceStateV1(raw: unknown): WorkspaceStateV1 | null {
 
   const nodes = candidate.nodes as Record<string, WorkspaceNode>;
   const rootNode = nodes[candidate.rootFolderId];
-  const activeNode = nodes[candidate.activeDocumentId];
-  if (!rootNode || rootNode.type !== "folder" || !activeNode || activeNode.type !== "document") {
+  const activeNode =
+    typeof candidate.activeDocumentId === "string" ? nodes[candidate.activeDocumentId] : null;
+  if (
+    !rootNode ||
+    rootNode.type !== "folder" ||
+    (candidate.activeDocumentId !== null && (!activeNode || activeNode.type !== "document"))
+  ) {
     return null;
   }
 
@@ -1315,14 +1356,15 @@ function normalizePanelInstances(
 
     if (panel.kind === "editor") {
       const openDocumentIds = uniqueIds(panel.openDocumentIds.filter((documentId) => state.nodes[documentId]?.type === "document"));
-      const resolvedOpenDocumentIds = openDocumentIds.length > 0 ? openDocumentIds : [state.activeDocumentId];
+      const resolvedOpenDocumentIds =
+        openDocumentIds.length > 0 ? openDocumentIds : state.activeDocumentId ? [state.activeDocumentId] : [];
       normalized[panel.id] = {
         ...base,
         kind: "editor",
         openDocumentIds: resolvedOpenDocumentIds,
-        activeDocumentId: resolvedOpenDocumentIds.includes(panel.activeDocumentId)
+        activeDocumentId: panel.activeDocumentId && resolvedOpenDocumentIds.includes(panel.activeDocumentId)
           ? panel.activeDocumentId
-          : resolvedOpenDocumentIds[0],
+          : resolvedOpenDocumentIds[0] ?? null,
       };
       continue;
     }
@@ -1396,7 +1438,7 @@ function normalizeLayoutNode(
 }
 
 function createDefaultDockingState(
-  activeDocumentId: string,
+  activeDocumentId: string | null,
   now: string,
   existingPanels?: Record<string, WorkspacePanelInstance>,
 ): Pick<WorkspaceState, "panelInstances" | "layout" | "lastFocusedEditorPanelId" | "lastFocusedTerminalPanelId"> {
@@ -1414,7 +1456,7 @@ function createDefaultDockingState(
     ({
       id: DEFAULT_EDITOR_PANEL_ID,
       kind: "editor",
-      openDocumentIds: [activeDocumentId],
+      openDocumentIds: activeDocumentId ? [activeDocumentId] : [],
       activeDocumentId,
       createdAt: now,
       updatedAt: now,
@@ -1450,7 +1492,10 @@ function createDefaultDockingState(
   return {
     panelInstances: {
       [explorer.id]: explorer,
-      [editor.id]: editor.kind === "editor" ? { ...editor, openDocumentIds: [activeDocumentId], activeDocumentId } : editor,
+      [editor.id]:
+        editor.kind === "editor"
+          ? { ...editor, openDocumentIds: activeDocumentId ? [activeDocumentId] : [], activeDocumentId }
+          : editor,
       [terminal.id]: terminal,
       [diagnostics.id]: diagnostics,
       [files.id]: files,
@@ -1526,7 +1571,7 @@ function createPanelInstance(state: WorkspaceState, kind: WorkspacePanelKind, no
     return {
       id,
       kind,
-      openDocumentIds: [state.activeDocumentId],
+      openDocumentIds: state.activeDocumentId ? [state.activeDocumentId] : [],
       activeDocumentId: state.activeDocumentId,
       createdAt: now,
       updatedAt: now,
@@ -1884,9 +1929,9 @@ function attachDocumentToPreferredEditor(state: WorkspaceState, documentId: stri
   return openDocumentInEditorPanel(state, editorPanelId, documentId, now);
 }
 
-function resolveFallbackDocumentId(state: WorkspaceState, excludingDocumentId?: string): string {
+function resolveFallbackDocumentId(state: WorkspaceState, excludingDocumentId?: string): string | null {
   const availableDocuments = listDocuments(state).filter((document) => document.id !== excludingDocumentId);
-  return availableDocuments[0]?.id ?? state.activeDocumentId;
+  return availableDocuments[0]?.id ?? state.activeDocumentId ?? null;
 }
 
 function getPanelOrThrow(state: WorkspaceState, panelId: string): WorkspacePanelInstance {
@@ -2177,14 +2222,17 @@ function coercePanelInstance(panelId: string, raw: unknown): WorkspacePanelInsta
   }
 
   if (candidate.kind === "editor") {
-    if (!Array.isArray(candidate.openDocumentIds) || typeof candidate.activeDocumentId !== "string") {
+    if (
+      !Array.isArray(candidate.openDocumentIds) ||
+      (candidate.activeDocumentId !== null && typeof candidate.activeDocumentId !== "string")
+    ) {
       return null;
     }
     return {
       id: candidate.id,
       kind: "editor",
       openDocumentIds: candidate.openDocumentIds.filter(isString),
-      activeDocumentId: candidate.activeDocumentId,
+      activeDocumentId: candidate.activeDocumentId ?? null,
       createdAt: candidate.createdAt,
       updatedAt: candidate.updatedAt,
     };

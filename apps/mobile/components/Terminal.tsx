@@ -11,7 +11,12 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
-import { colors, fonts } from "../lib/theme";
+import {
+  createThemedStyleSheet,
+  fonts,
+  useAppTheme,
+  useThemedStyles,
+} from "../lib/theme";
 
 interface TerminalProps {
   text: string;
@@ -58,6 +63,8 @@ export function Terminal({
   const isUserScrollingRef = useRef(false);
   const { width } = useWindowDimensions();
   const isCompact = width < 760;
+  const { colors } = useAppTheme();
+  const styles = useThemedStyles(useStyles);
   const lines = text.length > 0 ? text.split(/\r?\n/) : [];
 
   const scrollToLatest = (animated: boolean) => {
@@ -116,7 +123,7 @@ export function Terminal({
         }}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator
-        indicatorStyle="white"
+        indicatorStyle={colors.terminalIndicator}
       >
         {lines.map((line, index) => {
           if (line.startsWith("$ ")) {
@@ -168,7 +175,7 @@ export function Terminal({
               selectionColor={colors.accent}
               autoFocus
               returnKeyType="send"
-              keyboardAppearance="dark"
+              keyboardAppearance={colors.inputKeyboardAppearance}
               underlineColorAndroid="transparent"
             />
             <View
@@ -202,7 +209,7 @@ export function Terminal({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyleSheet(({ colors }) => ({
   container: {
     flex: 1,
     minHeight: 0,
@@ -325,4 +332,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 6,
   },
-});
+}));

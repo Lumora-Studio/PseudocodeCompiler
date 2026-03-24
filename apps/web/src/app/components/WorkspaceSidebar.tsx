@@ -76,9 +76,9 @@ const CONTEXT_MENU_MARGIN = 14;
 const EXPLORER_RELEASE_LABEL = `alpha - version ${packageJson.version}`;
 
 const contextMenuButtonClassName =
-  "block w-full rounded-md px-3 py-2 text-left text-sm text-[var(--text)] transition hover:bg-[rgba(255,255,255,0.06)]";
+  "block w-full appearance-none rounded-md border-0 bg-transparent px-3 py-2 text-left text-sm transition hover:bg-[var(--hover)] disabled:cursor-not-allowed";
 const contextMenuDangerButtonClassName =
-  "block w-full rounded-md px-3 py-2 text-left text-sm text-[var(--red)] transition hover:bg-[rgba(255,69,58,0.12)]";
+  "block w-full appearance-none rounded-md border-0 bg-transparent px-3 py-2 text-left text-sm transition hover:bg-[rgba(255,69,58,0.12)] disabled:cursor-not-allowed";
 
 function getFileIcon(name: string, isActive: boolean) {
   const ext = name.split(".").pop()?.toLowerCase();
@@ -142,7 +142,9 @@ export function WorkspaceSidebar({
 }: WorkspaceSidebarProps) {
   const flattened = useMemo(() => flattenVisibleNodes(workspace), [workspace]);
   const visibleNodeIds = useMemo(() => flattened.map(({ node }) => node.id), [flattened]);
-  const [selectionState, setSelectionState] = useState<string[]>([workspace.activeDocumentId]);
+  const [selectionState, setSelectionState] = useState<string[]>(
+    workspace.activeDocumentId ? [workspace.activeDocumentId] : [],
+  );
   const [anchorState, setAnchorState] = useState<string | null>(workspace.activeDocumentId);
   const [dropHint, setDropHint] = useState<DropHint | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -159,7 +161,7 @@ export function WorkspaceSidebar({
 
   const selectedNodeIds = useMemo(() => {
     const nextSelection = visibleNodeIds.filter((nodeId) => selectionState.includes(nodeId));
-    return nextSelection.length > 0 ? nextSelection : [workspace.activeDocumentId];
+    return nextSelection.length > 0 ? nextSelection : workspace.activeDocumentId ? [workspace.activeDocumentId] : [];
   }, [selectionState, visibleNodeIds, workspace.activeDocumentId]);
   const createTargetParentId = useMemo(() => {
     if (selectedNodeIds.length >= 1) {
@@ -169,7 +171,8 @@ export function WorkspaceSidebar({
     }
     return undefined;
   }, [selectedNodeIds, workspace.nodes]);
-  const anchorNodeId = anchorState && workspace.nodes[anchorState] ? anchorState : workspace.activeDocumentId;
+  const anchorNodeId =
+    anchorState && workspace.nodes[anchorState] ? anchorState : workspace.activeDocumentId;
   const selectedNodeSet = useMemo(() => new Set(selectedNodeIds), [selectedNodeIds]);
 
   useEffect(() => {
@@ -955,7 +958,7 @@ export function WorkspaceSidebar({
         <div
           role="menu"
           aria-label="Explorer actions"
-          className="fixed z-50 w-[248px] overflow-hidden rounded-lg border border-[var(--surface3)] bg-[rgba(44,44,46,0.98)] shadow-[0_22px_48px_rgba(0,0,0,0.5)]"
+          className="fixed z-50 w-[248px] overflow-hidden rounded-lg border border-[var(--surface3)] bg-[var(--surface)] shadow-[0_22px_48px_rgba(0,0,0,0.22)]"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onMouseDown={(event) => event.stopPropagation()}
           onPointerDown={(event) => event.stopPropagation()}
@@ -978,6 +981,7 @@ export function WorkspaceSidebar({
                 <button
                   type="button"
                   className={contextMenuButtonClassName}
+                  style={{ color: "var(--text)" }}
                   onClick={() => {
                     onCreateDocument(contextNode.id);
                     setContextMenu(null);
@@ -988,6 +992,7 @@ export function WorkspaceSidebar({
                 <button
                   type="button"
                   className={contextMenuButtonClassName}
+                  style={{ color: "var(--text)" }}
                   onClick={() => {
                     onCreateFolder(contextNode.id);
                     setContextMenu(null);
@@ -998,6 +1003,7 @@ export function WorkspaceSidebar({
                 <button
                   type="button"
                   className={contextMenuButtonClassName}
+                  style={{ color: "var(--text)" }}
                   onClick={() => {
                     onToggleFolder(contextNode.id);
                     setContextMenu(null);
@@ -1014,6 +1020,10 @@ export function WorkspaceSidebar({
                   type="button"
                   className={contextMenuButtonClassName}
                   disabled={!canMoveContextNodeUp}
+                  style={{
+                    color: "var(--text)",
+                    opacity: canMoveContextNodeUp ? 1 : 0.38,
+                  }}
                   onClick={() => {
                     if (!contextNode) return;
                     moveByOffset(contextNode, -1);
@@ -1026,6 +1036,10 @@ export function WorkspaceSidebar({
                   type="button"
                   className={contextMenuButtonClassName}
                   disabled={!canMoveContextNodeDown}
+                  style={{
+                    color: "var(--text)",
+                    opacity: canMoveContextNodeDown ? 1 : 0.38,
+                  }}
                   onClick={() => {
                     if (!contextNode) return;
                     moveByOffset(contextNode, 1);
@@ -1039,6 +1053,7 @@ export function WorkspaceSidebar({
             <button
               type="button"
               className={contextMenuButtonClassName}
+              style={{ color: "var(--text)" }}
               onClick={() => moveSelectionToTopLevel(contextMenu.selection)}
             >
               Move to Top Level
@@ -1047,6 +1062,7 @@ export function WorkspaceSidebar({
               <button
                 type="button"
                 className={contextMenuButtonClassName}
+                style={{ color: "var(--text)" }}
                 onClick={() => {
                   onRenameNode(contextMenu.nodeId);
                   setContextMenu(null);
@@ -1059,6 +1075,7 @@ export function WorkspaceSidebar({
             <button
               type="button"
               className={contextMenuDangerButtonClassName}
+              style={{ color: "var(--red)" }}
               onClick={handleDeleteSelection}
             >
               {contextMenu.selection.length > 1 ? `Delete ${contextMenu.selection.length} items` : "Delete"}

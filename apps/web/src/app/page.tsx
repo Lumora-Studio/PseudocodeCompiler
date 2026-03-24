@@ -36,6 +36,14 @@ import { MonacoPseudocodeEditor } from "@/app/components/MonacoPseudocodeEditor"
 import { WorkspaceSidebar } from "@/app/components/WorkspaceSidebar";
 import { useWorkspaceSession } from "@/app/hooks/useWorkspaceSession";
 import { isAppleTouchDevice } from "@/lib/appleTouch";
+import {
+  applyResolvedTheme,
+  getSystemTheme,
+  loadThemeMode,
+  resolveTheme,
+  saveThemeMode,
+  type ThemeMode,
+} from "@/lib/theme";
 
 /* ── constants ── */
 
@@ -70,6 +78,24 @@ interface DeleteDialogState {
   nodeIds: string[];
   message: string;
 }
+
+const THEME_OPTIONS: Array<{ value: ThemeMode; label: string; description: string }> = [
+  {
+    value: "system",
+    label: "System",
+    description: "Follow the operating system appearance automatically.",
+  },
+  {
+    value: "dark",
+    label: "Dark",
+    description: "Use the current graphite shell and dark editor palette.",
+  },
+  {
+    value: "light",
+    label: "Light",
+    description: "Switch to the warm paper light theme across the app.",
+  },
+];
 
 /* ── component ── */
 
@@ -117,6 +143,9 @@ export default function HomePage() {
   const [touchTab, setTouchTab] = useState<TouchTab>("editor");
   const [touchSidebarVisible, setTouchSidebarVisible] = useState(true);
   const [touchOutputVisible, setTouchOutputVisible] = useState(true);
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+  const [themeMode, setThemeMode] = useState<ThemeMode>("system");
+  const [systemTheme, setSystemTheme] = useState<"dark" | "light">("dark");
   const [viewportSize, setViewportSize] = useState(() => ({
     width: typeof window === "undefined" ? 1280 : window.innerWidth,
     height: typeof window === "undefined" ? 800 : window.innerHeight,
@@ -156,7 +185,7 @@ export default function HomePage() {
   }, [workspace]);
 
   const editorActiveDoc = useMemo(() => {
-    if (!workspace || !editorPanel) return null;
+    if (!workspace || !editorPanel?.activeDocumentId) return null;
     const node = workspace.nodes[editorPanel.activeDocumentId];
     return node?.type === "document" ? node : null;
   }, [workspace, editorPanel]);
@@ -170,6 +199,7 @@ export default function HomePage() {
   const terminalOutput = terminalPanelId
     ? (terminalOutputs[terminalPanelId] ?? "")
     : "";
+  const resolvedTheme = resolveTheme(themeMode, systemTheme);
 
   /* ── effects ── */
 
@@ -179,6 +209,32 @@ export default function HomePage() {
       renameInputRef.current?.select();
     }
   }, [renameDialog]);
+
+  useEffect(() => {
+    const initialMode = loadThemeMode();
+    const initialSystemTheme = getSystemTheme();
+    setThemeMode(initialMode);
+    setSystemTheme(initialSystemTheme);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleChange = (event: MediaQueryListEvent) => {
+      setSystemTheme(event.matches ? "dark" : "light");
+    };
+
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, []);
+
+  useEffect(() => {
+    applyResolvedTheme(resolvedTheme);
+    saveThemeMode(themeMode);
+  }, [resolvedTheme, themeMode]);
 
   const scrollOutputToBottom = useCallback(() => {
     if (!shouldAutoScrollOutputRef.current) {
@@ -305,6 +361,9 @@ export default function HomePage() {
     shouldAutoScrollOutputRef.current = true;
     if (terminalPanelId) clearTerminal(terminalPanelId);
   }, [clearTerminal, terminalPanelId]);
+  const handleThemeModeChange = useCallback((mode: ThemeMode) => {
+    setThemeMode(mode);
+  }, []);
   const isTouchTablet = isAppleTouchUi && viewportSize.width >= TOUCH_TABLET_BREAKPOINT;
   const isTouchPhone = isAppleTouchUi && viewportSize.width < TOUCH_TABLET_BREAKPOINT;
 
@@ -338,6 +397,94 @@ export default function HomePage() {
     paddingBottom: "env(safe-area-inset-bottom, 0px)",
     paddingLeft: "env(safe-area-inset-left, 0px)",
   } as const;
+
+  const renderThemeSettings = (compact = false) => (
+    <div className={compact ? "mt-6 space-y-3" : "space-y-3"}>
+      <div>
+        <p className="text-[11px] font-semibold tracking-[0.18em] text-[var(--text3)]">
+          APPEARANCE
+        </p>
+        <h3 className="mt-2 text-[22px] font-semibold text-[var(--text)]">Theme</h3>
+        <p className="mt-2 max-w-md text-sm leading-6 text-[var(--text2)]">
+          Choose how the compiler shell should look on this device. The editor, workspace,
+          output, and dialogs all follow the same setting.
+        </p>
+      </div>
+
+      <div className="grid gap-3">
+        {THEME_OPTIONS.map((option) => {
+          const selected = themeMode === option.value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => handleThemeModeChange(option.value)}
+              aria-pressed={selected}
+              className={`rounded-2xl border px-4 py-3 text-left transition ${
+                selected
+                  ? "border-[var(--accent)] bg-[var(--selected)]"
+                  : "border-[var(--separator)] bg-[var(--surface)] hover:bg-[var(--surface2)]"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-semibold text-[var(--text)]">{option.label}</span>
+                {selected ? (
+                  <span className="rounded-full bg-[var(--accent)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-white">
+                    Active
+                  </span>
+                ) : null}
+              </div>
+              <p className="mt-1 text-sm leading-5 text-[var(--text2)]">{option.description}</p>
+            </button>
+          );
+        })}
+      </div>
+
+      <p className="text-xs text-[var(--text3)]">
+        Current resolved appearance:{" "}
+        <span className="font-semibold capitalize text-[var(--text2)]">{resolvedTheme}</span>
+      </p>
+    </div>
+  );
+
+  const renderStarterPanel = (compact = false) => (
+    <div
+      className={`flex h-full min-h-0 items-center justify-center px-5 ${
+        compact ? "py-8" : "py-12"
+      }`}
+    >
+      <section className="relative w-full max-w-2xl overflow-hidden rounded-[28px] border border-[var(--separator)] bg-[linear-gradient(135deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] p-8 shadow-[0_24px_80px_rgba(0,0,0,0.28)]">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(10,132,255,0.18),transparent_35%),radial-gradient(circle_at_bottom_left,rgba(52,199,89,0.12),transparent_32%)]" />
+        <div className="relative">
+          <p className="text-[11px] font-semibold tracking-[0.22em] text-[var(--accent)]">
+            START HERE
+          </p>
+          <h2 className="mt-4 text-3xl font-semibold text-[var(--text)]">
+            Create your first file.
+          </h2>
+          <p className="mt-4 max-w-xl text-sm leading-7 text-[var(--text2)]">
+            This workspace starts empty on purpose. Add a pseudocode file from the explorer, then write, compile, and run from there.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <button
+              type="button"
+              className="inline-flex h-11 items-center justify-center rounded-2xl bg-[var(--accent)] px-5 text-sm font-semibold text-white transition hover:brightness-110"
+              onClick={() => createDocumentInWorkspace()}
+            >
+              Create First File
+            </button>
+            <button
+              type="button"
+              className="inline-flex h-11 items-center justify-center rounded-2xl border border-[var(--separator)] bg-[var(--surface)] px-5 text-sm font-semibold text-[var(--text2)] transition hover:bg-[var(--surface2)]"
+              onClick={() => createFolderInWorkspace()}
+            >
+              Create Folder
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
 
   const renderTouchOutputSurface = (title: string, onClose?: () => void) => (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--surface)]">
@@ -484,7 +631,7 @@ export default function HomePage() {
 
   /* ── loading state ── */
 
-  if (!workspace || !activeDocument) {
+  if (!workspace) {
     return (
       <main className="min-h-dvh bg-[var(--bg)]">
         <div className="flex min-h-dvh items-center justify-center px-4 py-10">
@@ -493,10 +640,10 @@ export default function HomePage() {
               Workspace
             </p>
             <h1 className="mt-3 text-2xl font-semibold text-[var(--text)]">
-              Loading project files…
+              Loading workspace…
             </h1>
             <p className="mt-3 text-sm leading-6 text-[var(--text2)]">
-              Preparing the editor layout, file tree, and runtime panels.
+              Preparing the editor layout and runtime panels.
             </p>
           </section>
         </div>
@@ -561,7 +708,7 @@ export default function HomePage() {
                   <div className="h-6 w-px bg-[var(--separator)]" />
                   <FileCode size={18} className="text-[var(--accent)]" />
                   <span className="truncate text-[17px] font-semibold text-[var(--text)]">
-                    {currentDocument?.name}
+                    {currentDocument?.name ?? "No file selected"}
                   </span>
                 </div>
 
@@ -575,7 +722,7 @@ export default function HomePage() {
                     className="flex h-8 items-center gap-1.5 rounded-2xl bg-[var(--green)] px-4 text-white transition hover:brightness-110 disabled:opacity-50"
                     aria-label={isRunning ? "Running" : "Run"}
                     onClick={handleTouchRun}
-                    disabled={isRunning}
+                    disabled={isRunning || !currentDocument}
                   >
                     <Play size={14} fill="white" />
                     <span className="text-sm font-semibold">Run</span>
@@ -583,8 +730,8 @@ export default function HomePage() {
                   <button
                     type="button"
                     className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--accent)] transition hover:bg-[var(--hover)]"
-                    aria-label="Open manual"
-                    onClick={() => router.push("/manual")}
+                    aria-label="Open settings"
+                    onClick={() => setShowSettingsPanel(true)}
                   >
                     <Settings size={22} />
                   </button>
@@ -620,14 +767,18 @@ export default function HomePage() {
                   <div className="h-px shrink-0 bg-[var(--separator)]" />
 
                   <div className="min-h-0 flex-1">
-                    {currentDocument && (
+                    {currentDocument ? (
                       <MonacoPseudocodeEditor
+                        documentKey={currentDocument.id}
                         value={currentDocument.source}
                         onChange={(value) => handleDocumentSourceChange(currentDocument.id, value)}
                         diagnostics={
-                          activeDocument.id === currentDocument.id ? compileDiagnostics : []
+                          activeDocument?.id === currentDocument.id ? compileDiagnostics : []
                         }
+                        theme={resolvedTheme}
                       />
+                    ) : (
+                      renderStarterPanel(true)
                     )}
                   </div>
 
@@ -666,7 +817,7 @@ export default function HomePage() {
                   <ChevronLeft size={24} />
                 </button>
                 <span className="truncate text-[17px] font-semibold text-[var(--text)]">
-                  {currentDocument?.name}
+                  {currentDocument?.name ?? "Create a file"}
                 </span>
                 <div className="flex-1" />
                 <button
@@ -674,7 +825,7 @@ export default function HomePage() {
                   className="flex h-7 items-center gap-1 rounded-[14px] bg-[var(--green)] px-3 text-white transition hover:brightness-110 disabled:opacity-50"
                   aria-label={isRunning ? "Running" : "Run"}
                   onClick={handleTouchRun}
-                  disabled={isRunning}
+                  disabled={isRunning || !currentDocument}
                 >
                   <Play size={12} fill="white" />
                   <span className="text-xs font-semibold">Run</span>
@@ -693,14 +844,20 @@ export default function HomePage() {
 
               <section className="flex min-h-0 flex-1 flex-col bg-[var(--bg)]">
                 <div className="min-h-0 flex-1">
-                  {touchTab === "editor" && currentDocument ? (
-                    <MonacoPseudocodeEditor
-                      value={currentDocument.source}
-                      onChange={(value) => handleDocumentSourceChange(currentDocument.id, value)}
-                      diagnostics={
-                        activeDocument.id === currentDocument.id ? compileDiagnostics : []
-                      }
-                    />
+                  {touchTab === "editor" ? (
+                    currentDocument ? (
+                      <MonacoPseudocodeEditor
+                        documentKey={currentDocument.id}
+                        value={currentDocument.source}
+                        onChange={(value) => handleDocumentSourceChange(currentDocument.id, value)}
+                        diagnostics={
+                          activeDocument?.id === currentDocument.id ? compileDiagnostics : []
+                        }
+                        theme={resolvedTheme}
+                      />
+                    ) : (
+                      renderStarterPanel(true)
+                    )
                   ) : null}
 
                   {touchTab === "files" ? (
@@ -730,6 +887,7 @@ export default function HomePage() {
                       <p className="mt-4 max-w-xs text-sm leading-6 text-[var(--text2)]">
                         Open the manual, review the language guide, and keep the workspace controls one tap away.
                       </p>
+                      {renderThemeSettings(true)}
                       <button
                         type="button"
                         className="mt-6 inline-flex h-10 items-center justify-center self-start rounded-2xl bg-[var(--accent)] px-5 text-sm font-semibold text-white transition hover:brightness-110"
@@ -901,7 +1059,7 @@ export default function HomePage() {
             className="flex h-7 items-center gap-1.5 rounded-[14px] bg-[var(--green)] px-3.5 py-[5px] text-white transition hover:brightness-110 disabled:opacity-50"
             aria-label={isRunning ? "Running" : "Run"}
             onClick={handleRun}
-            disabled={isRunning}
+            disabled={isRunning || !currentDocument}
           >
             <Play size={12} fill="white" />
             <span className="text-xs font-semibold">Run</span>
@@ -918,6 +1076,7 @@ export default function HomePage() {
             type="button"
             className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--text3)] transition hover:text-[var(--text2)]"
             aria-label="Settings"
+            onClick={() => setShowSettingsPanel(true)}
           >
             <Settings size={18} />
           </button>
@@ -1045,14 +1204,18 @@ export default function HomePage() {
 
           {/* Editor Content */}
           <div className="min-h-0 flex-1">
-            {editorActiveDoc && (
+            {editorActiveDoc ? (
               <MonacoPseudocodeEditor
+                documentKey={editorActiveDoc.id}
                 value={editorActiveDoc.source}
                 onChange={(value) => handleDocumentSourceChange(editorActiveDoc.id, value)}
                 diagnostics={
-                  activeDocument.id === editorActiveDoc.id ? compileDiagnostics : []
+                  activeDocument?.id === editorActiveDoc.id ? compileDiagnostics : []
                 }
+                theme={resolvedTheme}
               />
+            ) : (
+              renderStarterPanel()
             )}
           </div>
 
@@ -1156,6 +1319,37 @@ export default function HomePage() {
           )}
         </div>
       </div>
+
+      {showSettingsPanel && (
+        <div className="fixed inset-0 z-[65] flex items-center justify-center bg-[rgba(18,15,12,0.45)] p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="settings-dialog-title"
+            className="w-full max-w-lg rounded-[24px] border border-[var(--separator)] bg-[var(--surface)] p-6 shadow-[0_20px_60px_rgba(0,0,0,0.22)]"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.2em] text-[var(--accent)]">Settings</p>
+                <h2
+                  id="settings-dialog-title"
+                  className="mt-2 text-2xl font-semibold text-[var(--text)]"
+                >
+                  Appearance
+                </h2>
+              </div>
+              <button
+                type="button"
+                className="rounded-md border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
+                onClick={() => setShowSettingsPanel(false)}
+              >
+                Close
+              </button>
+            </div>
+            <div className="mt-5">{renderThemeSettings()}</div>
+          </div>
+        </div>
+      )}
 
       {/* ════════════ Rename Dialog ════════════ */}
       {renameDialog && (

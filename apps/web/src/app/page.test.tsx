@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createDefaultWorkspace, createDocument, createFolder, getChildNodes, setActiveDocument, type WorkspaceState } from "@igcse/workspace";
+import { createDefaultWorkspace, createDocument, createEmptyWorkspace, createFolder, getChildNodes, setActiveDocument, type WorkspaceState } from "@igcse/workspace";
 
 const { loadWorkspaceMock, saveWorkspaceMock, compilePseudocodeMock, runMock, routerPushMock } = vi.hoisted(() => ({
   loadWorkspaceMock: vi.fn<() => Promise<WorkspaceState>>(),
@@ -191,6 +191,19 @@ describe("HomePage workspace flow", () => {
       expect(getExplorerButton("Renamed Doc.pseudo")).toBeInTheDocument();
     });
     expect(saveWorkspaceMock).toHaveBeenCalled();
+  });
+
+  it("creates the first file from the starter panel and opens the editor", async () => {
+    loadWorkspaceMock.mockResolvedValue(createEmptyWorkspace("2026-03-15T00:00:00.000Z"));
+    render(<HomePage />);
+
+    expect(await screen.findByText("Create your first file.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Create First File" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("textbox", { name: "Mock editor" })).toHaveValue("");
+    });
   });
 
   it("reorders documents through workspace controls", async () => {

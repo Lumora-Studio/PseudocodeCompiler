@@ -1,5 +1,9 @@
 import { ScrollView, StyleSheet, Text, View } from "react-native";
-import { colors, fonts } from "../lib/theme";
+import {
+  createThemedStyleSheet,
+  fonts,
+  useThemedStyles,
+} from "../lib/theme";
 
 const commandWords = [
   ["Calculate", "Work out from given facts, figures or information."],
@@ -24,6 +28,7 @@ function Section({
   title: string;
   children: React.ReactNode;
 }) {
+  const styles = useThemedStyles(useStyles);
   return (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>{title}</Text>
@@ -33,6 +38,7 @@ function Section({
 }
 
 function CodeBlock({ code }: { code: string }) {
+  const styles = useThemedStyles(useStyles);
   return (
     <View style={styles.codeBlock}>
       <Text style={styles.codeText}>{code}</Text>
@@ -41,6 +47,7 @@ function CodeBlock({ code }: { code: string }) {
 }
 
 function BulletList({ items }: { items: string[] }) {
+  const styles = useThemedStyles(useStyles);
   return (
     <View style={styles.list}>
       {items.map((item, index) => (
@@ -53,6 +60,7 @@ function BulletList({ items }: { items: string[] }) {
 }
 
 export default function GuidelinesScreen() {
+  const styles = useThemedStyles(useStyles);
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
       <View style={styles.header}>
@@ -294,10 +302,10 @@ CLOSEFILE FileName`}
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyleSheet(({ colors }) => ({
   scroll: {
     flex: 1,
-    backgroundColor: colors.bg,
+    backgroundColor: colors.background,
   },
   container: {
     padding: 16,
@@ -314,19 +322,19 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 22,
     fontWeight: "600",
-    color: colors.text,
+    color: colors.textPrimary,
     marginTop: 4,
   },
   desc: {
     fontSize: 13,
-    color: colors.text2,
+    color: colors.textSecondary,
     marginTop: 8,
     lineHeight: 19,
   },
   note: {
     borderWidth: 1,
-    borderColor: colors.separator,
-    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    backgroundColor: colors.panel,
     borderRadius: 12,
     padding: 14,
     marginBottom: 12,
@@ -338,14 +346,14 @@ const styles = StyleSheet.create({
   },
   noteText: {
     fontSize: 13,
-    color: colors.text2,
+    color: colors.textSecondary,
     marginTop: 6,
     lineHeight: 19,
   },
   section: {
     borderWidth: 1,
-    borderColor: colors.separator,
-    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    backgroundColor: colors.panel,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
@@ -353,13 +361,13 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: "600",
-    color: colors.text,
+    color: colors.textPrimary,
     marginBottom: 10,
   },
   subheading: {
     fontSize: 14,
     fontWeight: "600",
-    color: colors.text,
+    color: colors.textPrimary,
     marginTop: 12,
     marginBottom: 6,
   },
@@ -368,14 +376,14 @@ const styles = StyleSheet.create({
   },
   listItem: {
     fontSize: 13,
-    color: colors.text2,
+    color: colors.textSecondary,
     lineHeight: 19,
     paddingLeft: 4,
   },
   codeBlock: {
     borderWidth: 1,
-    borderColor: colors.separator,
-    backgroundColor: colors.bg,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
     borderRadius: 8,
     padding: 12,
     marginTop: 10,
@@ -383,27 +391,27 @@ const styles = StyleSheet.create({
   codeText: {
     fontFamily: fonts.mono,
     fontSize: 12,
-    color: colors.text,
+    color: colors.textPrimary,
     lineHeight: 18,
   },
   tableRow: {
     flexDirection: "row",
     borderBottomWidth: 1,
-    borderBottomColor: colors.separator,
+    borderBottomColor: colors.border,
     paddingVertical: 8,
   },
   tableWord: {
     width: 100,
     fontSize: 13,
     fontWeight: "600",
-    color: colors.text,
+    color: colors.textPrimary,
   },
   tableMeaning: {
     flex: 1,
     fontSize: 13,
-    color: colors.text2,
+    color: colors.textSecondary,
   },
   footerSpace: {
     height: 40,
   },
-});
+}));

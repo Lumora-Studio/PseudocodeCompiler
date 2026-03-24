@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Keyboard,
   Platform,
@@ -13,20 +13,36 @@ import {
   useSafeAreaFrame,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import * as ScreenOrientation from "expo-screen-orientation";
 import { WebView } from "react-native-webview";
 import { EditorWebView } from "../components/EditorWebView";
 import { Terminal } from "../components/Terminal";
 import { WorkspaceTree } from "../components/WorkspaceTree";
-import { colors, dimensions, fonts, radii } from "../lib/theme";
+import {
+  createThemedStyleSheet,
+  dimensions,
+  fonts,
+  radii,
+  type ThemeMode,
+  useAppTheme,
+  useThemedStyles,
+} from "../lib/theme";
 import { useCompilerWorkspace } from "../lib/useCompilerWorkspace";
 
 // @ts-expect-error Expo bundles local HTML assets for WebView sources.
 import pyodideRunnerHtml from "../assets/pyodide-runner.html";
 
 type PhoneTab = "editor" | "files" | "output" | "settings";
+
+const PHONE_TAB_BAR_HORIZONTAL_PADDING = 20;
+const THEME_MODE_ORDER: ThemeMode[] = ["system", "light", "dark"];
+
+function getNextThemeMode(mode: ThemeMode): ThemeMode {
+  const currentIndex = THEME_MODE_ORDER.indexOf(mode);
+  return THEME_MODE_ORDER[(currentIndex + 1) % THEME_MODE_ORDER.length];
+}
 
 function NavIconButton({
   icon,
@@ -39,6 +55,8 @@ function NavIconButton({
   onPress: () => void;
   disabled?: boolean;
 }) {
+  const { colors } = useAppTheme();
+  const styles = useThemedStyles(useStyles);
   return (
     <Pressable
       onPress={onPress}
@@ -69,6 +87,7 @@ function RunButton({
   onPress: () => void;
   compact?: boolean;
 }) {
+  const styles = useThemedStyles(useStyles);
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -92,6 +111,8 @@ function OutputHeader({
   onClear: () => void;
   onClose: () => void;
 }) {
+  const { colors } = useAppTheme();
+  const styles = useThemedStyles(useStyles);
   return (
     <View style={styles.outputHeader}>
       <Text style={styles.outputHeaderTitle}>Output</Text>
@@ -107,17 +128,55 @@ function OutputHeader({
   );
 }
 
+function StarterPanel({
+  onCreateDocument,
+  onCreateFolder,
+}: {
+  onCreateDocument: () => void;
+  onCreateFolder: () => void;
+}) {
+  const styles = useThemedStyles(useStyles);
+
+  return (
+    <View style={styles.starterWrap}>
+      <View style={styles.starterCard}>
+        <Text style={styles.starterEyebrow}>START HERE</Text>
+        <Text style={styles.starterTitle}>Create your first file.</Text>
+        <Text style={styles.starterBody}>
+          This workspace now opens empty. Add a pseudocode file from here or from the Files tab, then start writing and running code.
+        </Text>
+        <View style={styles.starterActions}>
+          <TouchableOpacity style={styles.starterPrimaryButton} onPress={onCreateDocument}>
+            <Text style={styles.starterPrimaryButtonText}>Create First File</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.starterSecondaryButton} onPress={onCreateFolder}>
+            <Text style={styles.starterSecondaryButtonText}>Create Folder</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 function PhoneSettingsView({
   activeDocumentName,
+  mode,
+  resolvedTheme,
+  onSelectMode,
   onOpenFiles,
   onOpenManual,
   onClearOutput,
 }: {
   activeDocumentName: string;
+  mode: ThemeMode;
+  resolvedTheme: "dark" | "light";
+  onSelectMode: (mode: ThemeMode) => void;
   onOpenFiles: () => void;
   onOpenManual: () => void;
   onClearOutput: () => void;
 }) {
+  const { colors } = useAppTheme();
+  const styles = useThemedStyles(useStyles);
   return (
     <ScrollView
       style={styles.settingsScroll}
@@ -133,10 +192,42 @@ function PhoneSettingsView({
       </View>
 
       <View style={styles.settingsCard}>
-        <Text style={styles.settingsLabel}>Current file</Text>
-        <Text style={styles.settingsValue}>{activeDocumentName}</Text>
+        <Text style={styles.settingsLabel}>Appearance</Text>
+        <Text style={styles.settingsValue}>Theme mode: {mode}</Text>
         <Text style={styles.settingsBody}>
-          Open the Files tab to switch documents or create new pseudocode files inside the seeded starter workspace.
+          Following {resolvedTheme} visuals right now. Switch manually or stay synced with the system setting.
+        </Text>
+        <View style={styles.themeModeRow}>
+          {THEME_MODE_ORDER.map((option) => {
+            const isActive = mode === option;
+            return (
+              <TouchableOpacity
+                key={option}
+                onPress={() => onSelectMode(option)}
+                style={[
+                  styles.themeModeButton,
+                  isActive && styles.themeModeButtonActive,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.themeModeButtonText,
+                    isActive && styles.themeModeButtonTextActive,
+                  ]}
+                >
+                  {option}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+
+      <View style={styles.settingsCard}>
+        <Text style={styles.settingsLabel}>Current file</Text>
+        <Text style={styles.settingsValue}>{activeDocumentName || "No file selected"}</Text>
+        <Text style={styles.settingsBody}>
+          Open the Files tab to create a pseudocode file, switch documents, or clear the workspace completely.
         </Text>
       </View>
 
@@ -179,11 +270,12 @@ function PhoneTabBar({
   onSelect: (tab: PhoneTab) => void;
   bottomInset: number;
 }) {
+  const { colors } = useAppTheme();
+  const styles = useThemedStyles(useStyles);
   const tabs = [
-    { key: "editor" as const, label: "EDITOR", icon: "code" as const },
-    { key: "files" as const, label: "FILES", icon: "folder" as const },
-    { key: "output" as const, label: "OUTPUT", icon: "terminal" as const },
-    { key: "settings" as const, label: "SETTINGS", icon: "settings" as const },
+    { key: "editor" as const, label: "Editor", icon: "code" as const },
+    { key: "files" as const, label: "Files", icon: "folder" as const },
+    { key: "output" as const, label: "Output", icon: "terminal" as const },
   ];
 
   return (
@@ -202,8 +294,8 @@ function PhoneTabBar({
             >
               <Feather
                 name={tab.icon}
-                size={15}
-                color={isActive ? "#FFFFFF" : colors.text3}
+                size={18}
+                color={isActive ? colors.accent : colors.text2}
               />
               <Text
                 style={[
@@ -223,6 +315,8 @@ function PhoneTabBar({
 
 export default function EditorScreen() {
   const router = useRouter();
+  const { colors, mode, resolvedTheme, setMode } = useAppTheme();
+  const styles = useThemedStyles(useStyles);
   const insets = useSafeAreaInsets();
   const frame = useSafeAreaFrame();
   const { width, height } = frame;
@@ -235,7 +329,10 @@ export default function EditorScreen() {
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
   const [isOutputVisible, setIsOutputVisible] = useState(true);
+  const [editorRestoreToken, setEditorRestoreToken] = useState(0);
   const [phoneTab, setPhoneTab] = useState<PhoneTab>("editor");
+  const hasMountedRef = useRef(false);
+  const resumeEditorFromManualRef = useRef(false);
 
   const {
     workspace,
@@ -313,22 +410,43 @@ export default function EditorScreen() {
     Keyboard.dismiss();
   }, [isTabletLayout, phoneTab]);
 
+  useFocusEffect(
+    useCallback(() => {
+      if (!hasMountedRef.current) {
+        hasMountedRef.current = true;
+        return undefined;
+      }
+
+      if (!resumeEditorFromManualRef.current) {
+        return undefined;
+      }
+
+      resumeEditorFromManualRef.current = false;
+      setEditorRestoreToken((value) => value + 1);
+      return undefined;
+    }, []),
+  );
+
   const visibleBreadcrumbs = useMemo(() => {
     return breadcrumbs.filter((node) => node.parentId !== null);
   }, [breadcrumbs]);
 
-  const phoneTabBarBottomPadding = 21;
-  const screenHeight = height - insets.top - insets.bottom;
+  const phoneTabBarBottomPadding =
+    Platform.OS === "ios"
+      ? PHONE_TAB_BAR_HORIZONTAL_PADDING
+      : Math.max(insets.bottom, 8);
+  const phoneScreenHeight = height - insets.top;
+  const tabletScreenHeight = height - insets.top - insets.bottom;
   const phoneBodyHeight = Math.max(
     0,
-    screenHeight -
+    phoneScreenHeight -
       dimensions.phoneTopBarHeight -
       StyleSheet.hairlineWidth -
       (saveError ? 24 : 0),
   );
   const tabletBodyHeight = Math.max(
     0,
-    screenHeight - dimensions.tabletTopBarHeight - StyleSheet.hairlineWidth,
+    tabletScreenHeight - dimensions.tabletTopBarHeight - StyleSheet.hairlineWidth,
   );
   const rootInsetStyle = isTabletLayout
     ? ({
@@ -355,7 +473,16 @@ export default function EditorScreen() {
     setPhoneTab("output");
   };
 
-  if (!workspace || !activeDocument) {
+  const handleOpenManual = useCallback(() => {
+    resumeEditorFromManualRef.current = true;
+    router.push("/manual");
+  }, [router]);
+
+  const handleCycleThemeMode = useCallback(() => {
+    setMode(getNextThemeMode(mode));
+  }, [mode, setMode]);
+
+  if (!workspace) {
     return (
       <View style={[styles.safe, rootInsetStyle]}>
         <View style={styles.loadingWrap}>
@@ -391,22 +518,21 @@ export default function EditorScreen() {
                 <View style={styles.tabletNavSeparator} />
                 <Feather name="file-text" size={18} color={colors.accent} />
                 <Text style={styles.tabletNavTitle} numberOfLines={1}>
-                  {activeDocument.name}
+                  {activeDocument?.name ?? "No file selected"}
                 </Text>
               </View>
 
               <View style={styles.tabletNavRight}>
-                <RunButton disabled={isRunning} onPress={handleRun} />
+                <RunButton disabled={isRunning || !activeDocument} onPress={handleRun} />
                 <NavIconButton
                   icon="book-open"
                   label="Open manual"
-                  onPress={() => router.push("/manual")}
+                  onPress={handleOpenManual}
                 />
                 <NavIconButton
                   icon="settings"
-                  label="Settings coming soon"
-                  onPress={() => {}}
-                  disabled
+                  label={`Theme mode ${mode}. Tap to switch appearance.`}
+                  onPress={handleCycleThemeMode}
                 />
               </View>
             </View>
@@ -431,7 +557,7 @@ export default function EditorScreen() {
                   >
                     <WorkspaceTree
                       workspace={workspace}
-                      activeDocumentId={activeDocument.id}
+                      activeDocumentId={activeDocument?.id ?? null}
                       onToggleFolder={toggleFolder}
                       onCreateFolder={createFolderInWorkspace}
                       onCreateDocument={createDocumentInWorkspace}
@@ -451,7 +577,9 @@ export default function EditorScreen() {
                 <View style={styles.breadcrumbBar}>
                   {(visibleBreadcrumbs.length > 0
                     ? visibleBreadcrumbs
-                    : [activeDocument]
+                    : activeDocument
+                      ? [activeDocument]
+                      : []
                   ).map((node, index, nodes) => (
                     <View key={node.id} style={styles.breadcrumbItem}>
                       <Text
@@ -476,11 +604,20 @@ export default function EditorScreen() {
                 <View style={styles.divider} />
 
                 <View style={styles.editorPanel}>
-                  <EditorWebView
-                    initialValue={activeDocument.source}
-                    onChange={updateActiveDocumentSource}
-                    diagnostics={compileDiagnostics}
-                  />
+                  {activeDocument ? (
+                    <EditorWebView
+                      key={`tablet-editor-${activeDocument.id}`}
+                      initialValue={activeDocument.source}
+                      onChange={updateActiveDocumentSource}
+                      diagnostics={compileDiagnostics}
+                      restoreToken={editorRestoreToken}
+                    />
+                  ) : (
+                    <StarterPanel
+                      onCreateDocument={() => createDocumentInWorkspace()}
+                      onCreateFolder={() => createFolderInWorkspace()}
+                    />
+                  )}
                 </View>
 
                 <View style={styles.divider} />
@@ -524,16 +661,16 @@ export default function EditorScreen() {
                   onPress={() => setPhoneTab("files")}
                 />
                 <Text style={styles.phoneNavTitle} numberOfLines={1}>
-                  {activeDocument.name}
+                  {activeDocument?.name ?? "Create a file"}
                 </Text>
               </View>
 
               <View style={styles.phoneNavRight}>
-                <RunButton compact disabled={isRunning} onPress={handleRun} />
+                <RunButton compact disabled={isRunning || !activeDocument} onPress={handleRun} />
                 <NavIconButton
                   icon="book-open"
                   label="Open manual"
-                  onPress={() => router.push("/manual")}
+                  onPress={handleOpenManual}
                 />
                 <NavIconButton
                   icon="settings"
@@ -559,18 +696,27 @@ export default function EditorScreen() {
                     phoneTab !== "editor" && styles.phonePanelHidden,
                   ]}
                 >
-                  <EditorWebView
-                    initialValue={activeDocument.source}
-                    onChange={updateActiveDocumentSource}
-                    diagnostics={compileDiagnostics}
-                  />
+                  {activeDocument ? (
+                    <EditorWebView
+                      key={`phone-editor-${activeDocument.id}`}
+                      initialValue={activeDocument.source}
+                      onChange={updateActiveDocumentSource}
+                      diagnostics={compileDiagnostics}
+                      restoreToken={editorRestoreToken}
+                    />
+                  ) : (
+                    <StarterPanel
+                      onCreateDocument={() => createDocumentInWorkspace()}
+                      onCreateFolder={() => createFolderInWorkspace()}
+                    />
+                  )}
                 </View>
 
                 {phoneTab === "files" ? (
                   <View style={styles.phonePanel}>
                     <WorkspaceTree
                       workspace={workspace}
-                      activeDocumentId={activeDocument.id}
+                      activeDocumentId={activeDocument?.id ?? null}
                       onToggleFolder={toggleFolder}
                       onCreateFolder={createFolderInWorkspace}
                       onCreateDocument={createDocumentInWorkspace}
@@ -597,9 +743,12 @@ export default function EditorScreen() {
 
                 {phoneTab === "settings" ? (
                   <PhoneSettingsView
-                    activeDocumentName={activeDocument.name}
+                    activeDocumentName={activeDocument?.name ?? ""}
+                    mode={mode}
+                    resolvedTheme={resolvedTheme}
+                    onSelectMode={setMode}
                     onOpenFiles={() => setPhoneTab("files")}
-                    onOpenManual={() => router.push("/manual")}
+                    onOpenManual={handleOpenManual}
                     onClearOutput={clearTerminal}
                   />
                 ) : null}
@@ -633,16 +782,16 @@ export default function EditorScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyleSheet(({ colors, isDark }) => ({
   safe: {
     flex: 1,
     width: "100%",
-    backgroundColor: colors.bg,
+    backgroundColor: colors.background,
   },
   screen: {
     flex: 1,
     width: "100%",
-    backgroundColor: colors.bg,
+    backgroundColor: colors.background,
   },
   loadingWrap: {
     flex: 1,
@@ -650,17 +799,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   loadingText: {
-    color: colors.text2,
+    color: colors.textSecondary,
     fontFamily: fonts.sans,
     fontSize: 16,
   },
   divider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.separator,
+    backgroundColor: colors.border,
   },
   verticalDivider: {
     width: StyleSheet.hairlineWidth,
-    backgroundColor: colors.separator,
+    backgroundColor: colors.border,
   },
   iconButton: {
     width: 28,
@@ -682,7 +831,7 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 16,
     borderRadius: 16,
-    backgroundColor: colors.green,
+    backgroundColor: colors.success,
   },
   runButtonCompact: {
     height: 28,
@@ -718,11 +867,11 @@ const styles = StyleSheet.create({
   tabletNavSeparator: {
     width: 1,
     height: 24,
-    backgroundColor: colors.separator,
+    backgroundColor: colors.border,
   },
   tabletNavTitle: {
     flexShrink: 1,
-    color: colors.text,
+    color: colors.textPrimary,
     fontFamily: fonts.sans,
     fontSize: 17,
     fontWeight: "600",
@@ -739,89 +888,14 @@ const styles = StyleSheet.create({
     minHeight: 0,
   },
   sidebarShell: {
-    backgroundColor: colors.sidebar,
-  },
-  workspaceShell: {
-    flex: 1,
-    minHeight: 0,
-    backgroundColor: colors.sidebar,
-    overflow: "hidden",
-  },
-  workspaceHeader: {
-    height: 40,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-    paddingHorizontal: 16,
-  },
-  workspaceHeaderTitle: {
-    color: colors.text2,
-    fontFamily: fonts.sans,
-    fontSize: 11,
-    fontWeight: "600",
-    letterSpacing: 0.8,
-  },
-  workspaceHeaderButton: {
-    width: 20,
-    height: 20,
-    borderRadius: 6,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  workspaceHeaderButtonPressed: {
-    backgroundColor: colors.hover,
-  },
-  workspaceList: {
-    flex: 1,
-    minHeight: 0,
-  },
-  workspaceListContent: {
-    paddingTop: 4,
-    paddingRight: 8,
-    paddingBottom: 10,
-    paddingLeft: 8,
-    gap: 1,
-  },
-  workspaceRow: {
-    height: 28,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingRight: 8,
-    borderRadius: 6,
-  },
-  workspaceRowActive: {
-    backgroundColor: colors.selected,
-  },
-  workspaceRowPressed: {
-    backgroundColor: colors.hover,
-  },
-  workspaceChevron: {
-    marginRight: -2,
-  },
-  workspaceRowText: {
-    flex: 1,
-    minWidth: 0,
-    color: colors.text2,
-    fontFamily: fonts.sans,
-    fontSize: 13,
-  },
-  workspaceRowTextMuted: {
-    color: colors.text2,
-  },
-  workspaceRowTextOpenFolder: {
-    color: colors.text,
-  },
-  workspaceRowTextActive: {
-    color: colors.text,
+    backgroundColor: colors.sidebarPanel,
   },
   tabletEditorArea: {
     flex: 1,
     alignSelf: "stretch",
     minWidth: 0,
     minHeight: 0,
-    backgroundColor: colors.bg,
+    backgroundColor: colors.background,
   },
   breadcrumbBar: {
     height: dimensions.tabletBreadcrumbHeight,
@@ -829,7 +903,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 4,
     paddingHorizontal: 16,
-    backgroundColor: colors.bg,
+    backgroundColor: colors.background,
   },
   breadcrumbItem: {
     flexDirection: "row",
@@ -837,22 +911,96 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   breadcrumbText: {
-    color: colors.text3,
+    color: colors.textTertiary,
     fontFamily: fonts.sans,
     fontSize: 12,
   },
   breadcrumbTextActive: {
-    color: colors.text2,
+    color: colors.textSecondary,
     fontWeight: "500",
   },
   editorPanel: {
     flex: 1,
     minHeight: 0,
-    backgroundColor: colors.bg,
+    backgroundColor: colors.background,
+  },
+  starterWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+    backgroundColor: colors.background,
+  },
+  starterCard: {
+    width: "100%",
+    maxWidth: 520,
+    gap: 14,
+    padding: 24,
+    borderRadius: 28,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.panelRaised,
+  },
+  starterEyebrow: {
+    color: colors.accent,
+    fontFamily: fonts.sans,
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+  },
+  starterTitle: {
+    color: colors.textPrimary,
+    fontFamily: fonts.sans,
+    fontSize: 30,
+    fontWeight: "700",
+    lineHeight: 34,
+  },
+  starterBody: {
+    color: colors.textSecondary,
+    fontFamily: fonts.sans,
+    fontSize: 15,
+    lineHeight: 24,
+  },
+  starterActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    marginTop: 6,
+  },
+  starterPrimaryButton: {
+    minHeight: 46,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 18,
+    borderRadius: 18,
+    backgroundColor: colors.accent,
+  },
+  starterPrimaryButtonText: {
+    color: "#FFFFFF",
+    fontFamily: fonts.sans,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  starterSecondaryButton: {
+    minHeight: 46,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 18,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.panel,
+  },
+  starterSecondaryButtonText: {
+    color: colors.textSecondary,
+    fontFamily: fonts.sans,
+    fontSize: 14,
+    fontWeight: "700",
   },
   outputPanel: {
     minHeight: 0,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.panel,
   },
   collapsedOutputBar: {
     height: dimensions.collapsedOutputHeight,
@@ -860,7 +1008,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.panel,
   },
   outputHeader: {
     height: 36,
@@ -868,10 +1016,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.panel,
   },
   outputHeaderTitle: {
-    color: colors.text2,
+    color: colors.textSecondary,
     fontFamily: fonts.sans,
     fontSize: 13,
     fontWeight: "600",
@@ -909,7 +1057,7 @@ const styles = StyleSheet.create({
   },
   phoneNavTitle: {
     flexShrink: 1,
-    color: colors.text,
+    color: colors.textPrimary,
     fontFamily: fonts.sans,
     fontSize: 17,
     fontWeight: "600",
@@ -931,7 +1079,7 @@ const styles = StyleSheet.create({
   phonePanel: {
     ...StyleSheet.absoluteFillObject,
     minHeight: 0,
-    backgroundColor: colors.bg,
+    backgroundColor: colors.background,
   },
   phonePanelHidden: {
     opacity: 0,
@@ -939,47 +1087,46 @@ const styles = StyleSheet.create({
   phoneOutputPanel: {
     ...StyleSheet.absoluteFillObject,
     minHeight: 0,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.panel,
   },
   phoneTabBarContainer: {
-    paddingTop: 12,
-    paddingHorizontal: 16,
-    backgroundColor: colors.bg,
+    paddingTop: 6,
+    paddingHorizontal: PHONE_TAB_BAR_HORIZONTAL_PADDING,
+    backgroundColor: colors.background,
   },
   phoneTabBarPill: {
-    height: 50,
+    height: 58,
     flexDirection: "row",
     alignItems: "stretch",
     gap: 0,
-    padding: 4,
-    borderRadius: radii.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.separator,
-    backgroundColor: colors.surface,
+    padding: 5,
+    borderRadius: 29,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.panelRaised,
   },
   phoneTabBarItem: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: 3,
-    borderRadius: 22,
+    gap: 4,
+    borderRadius: 24,
   },
   phoneTabBarItemActive: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.panelStrong,
   },
   phoneTabBarText: {
-    color: colors.text3,
+    color: colors.textSecondary,
     fontFamily: fonts.sans,
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: "600",
-    letterSpacing: 0.5,
   },
   phoneTabBarTextActive: {
-    color: "#FFFFFF",
+    color: colors.accent,
   },
   settingsScroll: {
     flex: 1,
-    backgroundColor: colors.bg,
+    backgroundColor: colors.background,
   },
   settingsContent: {
     gap: 16,
@@ -990,7 +1137,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   settingsEyebrow: {
-    color: colors.text3,
+    color: colors.textTertiary,
     fontFamily: fonts.sans,
     fontSize: 11,
     fontWeight: "600",
@@ -998,14 +1145,14 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   settingsTitle: {
-    color: colors.text,
+    color: colors.textPrimary,
     fontFamily: fonts.sans,
     fontSize: 28,
     fontWeight: "700",
     lineHeight: 32,
   },
   settingsCopy: {
-    color: colors.text2,
+    color: colors.textSecondary,
     fontFamily: fonts.sans,
     fontSize: 14,
     lineHeight: 21,
@@ -1014,12 +1161,12 @@ const styles = StyleSheet.create({
     gap: 8,
     padding: 16,
     borderRadius: radii.section,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.panel,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.separator,
+    borderColor: colors.border,
   },
   settingsLabel: {
-    color: colors.text3,
+    color: colors.textTertiary,
     fontFamily: fonts.sans,
     fontSize: 11,
     fontWeight: "600",
@@ -1027,13 +1174,13 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   settingsValue: {
-    color: colors.text,
+    color: colors.textPrimary,
     fontFamily: fonts.sans,
     fontSize: 18,
     fontWeight: "600",
   },
   settingsBody: {
-    color: colors.text2,
+    color: colors.textSecondary,
     fontFamily: fonts.sans,
     fontSize: 14,
     lineHeight: 21,
@@ -1050,16 +1197,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
     borderRadius: radii.button,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.panel,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.separator,
+    borderColor: colors.border,
   },
   settingsActionPrimary: {
     backgroundColor: colors.accent,
     borderColor: colors.accent,
   },
   settingsActionText: {
-    color: colors.text2,
+    color: colors.textSecondary,
     fontFamily: fonts.sans,
     fontSize: 13,
     fontWeight: "600",
@@ -1071,10 +1218,38 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   settingsBullet: {
-    color: colors.text2,
+    color: colors.textSecondary,
     fontFamily: fonts.sans,
     fontSize: 14,
     lineHeight: 21,
+  },
+  themeModeRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  themeModeButton: {
+    flex: 1,
+    minHeight: 42,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radii.compactButton,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.panelRaised,
+  },
+  themeModeButtonActive: {
+    backgroundColor: colors.accentSoft,
+    borderColor: colors.accent,
+  },
+  themeModeButtonText: {
+    color: colors.textSecondary,
+    fontFamily: fonts.sans,
+    fontSize: 13,
+    fontWeight: "600",
+    textTransform: "capitalize",
+  },
+  themeModeButtonTextActive: {
+    color: colors.accent,
   },
   settingsGhostButton: {
     height: 44,
@@ -1083,10 +1258,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
     borderRadius: radii.button,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.panel,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
   },
   settingsGhostButtonText: {
-    color: colors.text2,
+    color: colors.textSecondary,
     fontFamily: fonts.sans,
     fontSize: 13,
     fontWeight: "600",
@@ -1094,10 +1271,10 @@ const styles = StyleSheet.create({
   errorBanner: {
     paddingHorizontal: 16,
     paddingVertical: 6,
-    backgroundColor: "rgba(255,69,58,0.15)",
+    backgroundColor: isDark ? "rgba(255,69,58,0.15)" : "rgba(192,59,43,0.12)",
   },
   errorBannerText: {
-    color: colors.red,
+    color: colors.danger,
     fontFamily: fonts.sans,
     fontSize: 12,
   },
@@ -1110,4 +1287,4 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: -1,
   },
-});
+}));

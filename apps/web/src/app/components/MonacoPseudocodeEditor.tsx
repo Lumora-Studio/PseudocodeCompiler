@@ -7,11 +7,14 @@ import { Diagnostic } from "@/compiler/types";
 import { autoCorrectPseudocodeLine } from "@/app/components/pseudocodeAutocorrect";
 import { isAppleTouchDevice } from "@/lib/appleTouch";
 import { getPseudocodeEditorOptions } from "@/lib/pseudocodeEditorOptions";
+import type { ResolvedTheme } from "@/lib/theme";
 
 interface MonacoPseudocodeEditorProps {
   value: string;
   onChange: (value: string) => void;
   diagnostics: Diagnostic[];
+  theme: ResolvedTheme;
+  documentKey?: string;
 }
 
 const TYPE_KEYWORDS = [
@@ -123,10 +126,15 @@ const ROUTINE_SUGGESTIONS = [
   },
 ] as const;
 
+let pseudocodeLanguageRegistered = false;
+let pseudocodeCompletionProviderRegistered = false;
+
 export function MonacoPseudocodeEditor({
   value,
   onChange,
   diagnostics,
+  theme,
+  documentKey,
 }: MonacoPseudocodeEditorProps) {
   const monacoRef = useRef<typeof import("monaco-editor") | null>(null);
   const editorRef = useRef<import("monaco-editor").editor.IStandaloneCodeEditor | null>(null);
@@ -153,118 +161,124 @@ export function MonacoPseudocodeEditor({
     monacoRef.current = monaco;
     editorRef.current = editor;
 
-    monaco.languages.register({ id: "igcse-pseudocode" });
-    monaco.languages.setMonarchTokensProvider("igcse-pseudocode", {
-      tokenizer: {
-        root: [
-          [/\/\/.*$/, "comment"],
-          [new RegExp(`\\b(${ROUTINE_KEYWORDS.join("|")})\\b`), "predefined"],
-          [new RegExp(`\\b(${TYPE_KEYWORDS.join("|")})\\b`), "type"],
-          [new RegExp(`\\b(${FLOW_KEYWORDS.join("|")})\\b`), "keyword"],
-          [/\b[0-9]+\.[0-9]+\b/, "number.float"],
-          [/\b[0-9]+\b/, "number"],
-          [/"[^"\\n]*"/, "string"],
-          [/'[^'\\n]*'/, "string"],
-          [/\u2190|<-/, "operator"],
-          [/<=|>=|<>|=|<|>|\+|-|\*|\/|\^/, "operator"],
-          [/\b[A-Za-z][A-Za-z0-9]*\b/, "identifier"],
-          [/[:,()\[\]]/, "delimiter"],
+    if (!pseudocodeLanguageRegistered) {
+      pseudocodeLanguageRegistered = true;
+      monaco.languages.register({ id: "igcse-pseudocode" });
+      monaco.languages.setMonarchTokensProvider("igcse-pseudocode", {
+        tokenizer: {
+          root: [
+            [/\/\/.*$/, "comment"],
+            [new RegExp(`\\b(${ROUTINE_KEYWORDS.join("|")})\\b`), "predefined"],
+            [new RegExp(`\\b(${TYPE_KEYWORDS.join("|")})\\b`), "type"],
+            [new RegExp(`\\b(${FLOW_KEYWORDS.join("|")})\\b`), "keyword"],
+            [/\b[0-9]+\.[0-9]+\b/, "number.float"],
+            [/\b[0-9]+\b/, "number"],
+            [/"[^"\\n]*"/, "string"],
+            [/'[^'\\n]*'/, "string"],
+            [/\u2190|<-/, "operator"],
+            [/<=|>=|<>|=|<|>|\+|-|\*|\/|\^/, "operator"],
+            [/\b[A-Za-z][A-Za-z0-9]*\b/, "identifier"],
+            [/[:,()\[\]]/, "delimiter"],
+          ],
+        },
+      });
+      monaco.languages.setLanguageConfiguration("igcse-pseudocode", {
+        brackets: [
+          ["(", ")"],
+          ["[", "]"],
         ],
-      },
-    });
-    monaco.languages.setLanguageConfiguration("igcse-pseudocode", {
-      brackets: [
-        ["(", ")"],
-        ["[", "]"],
-      ],
-      autoClosingPairs: [
-        { open: "\"", close: "\"" },
-        { open: "'", close: "'" },
-        { open: "(", close: ")" },
-        { open: "[", close: "]" },
-      ],
-      surroundingPairs: [
-        { open: "\"", close: "\"" },
-        { open: "'", close: "'" },
-        { open: "(", close: ")" },
-        { open: "[", close: "]" },
-      ],
-    });
+        autoClosingPairs: [
+          { open: "\"", close: "\"" },
+          { open: "'", close: "'" },
+          { open: "(", close: ")" },
+          { open: "[", close: "]" },
+        ],
+        surroundingPairs: [
+          { open: "\"", close: "\"" },
+          { open: "'", close: "'" },
+          { open: "(", close: ")" },
+          { open: "[", close: "]" },
+        ],
+      });
+    }
 
-    monaco.languages.registerCompletionItemProvider("igcse-pseudocode", {
-      provideCompletionItems(model: Monaco.editor.ITextModel, position: Monaco.Position) {
-        const word = model.getWordUntilPosition(position);
-        const range = {
-          startLineNumber: position.lineNumber,
-          endLineNumber: position.lineNumber,
-          startColumn: word.startColumn,
-          endColumn: word.endColumn,
-        };
+    if (!pseudocodeCompletionProviderRegistered) {
+      pseudocodeCompletionProviderRegistered = true;
+      monaco.languages.registerCompletionItemProvider("igcse-pseudocode", {
+        provideCompletionItems(model: Monaco.editor.ITextModel, position: Monaco.Position) {
+          const word = model.getWordUntilPosition(position);
+          const range = {
+            startLineNumber: position.lineNumber,
+            endLineNumber: position.lineNumber,
+            startColumn: word.startColumn,
+            endColumn: word.endColumn,
+          };
 
-        const keywordSuggestions = KEYWORDS.map((keyword, index) => ({
-          label: keyword,
-          kind: monaco.languages.CompletionItemKind.Keyword,
-          insertText: keyword,
-          range,
-          sortText: `1_${String(index).padStart(3, "0")}`,
-        }));
-
-        const routineSuggestions = ROUTINE_SUGGESTIONS.map((routine, index) => ({
-          label: routine.label,
-          detail: routine.detail,
-          kind: monaco.languages.CompletionItemKind.Function,
-          insertText: routine.insertText,
-          insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-          range,
-          sortText: `0_${String(index).padStart(3, "0")}`,
-        }));
-
-        const shorthandSuggestions = [
-          {
-            label: "PRINT (alias)",
-            detail: "Alias for OUTPUT",
-            kind: monaco.languages.CompletionItemKind.Snippet,
-            insertText: "OUTPUT ${1:\"text\"}",
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            filterText: "print p tab",
+          const keywordSuggestions = KEYWORDS.map((keyword, index) => ({
+            label: keyword,
+            kind: monaco.languages.CompletionItemKind.Keyword,
+            insertText: keyword,
             range,
-            sortText: "0_001",
-          },
-          {
-            label: "p -> OUTPUT",
-            detail: "Quick starter",
-            kind: monaco.languages.CompletionItemKind.Snippet,
-            insertText: "OUTPUT ${1:\"text\"}",
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            filterText: "p tab",
-            range,
-            sortText: "0_000",
-          },
-          {
-            label: "o -> OUTPUT",
-            detail: "Quick starter",
-            kind: monaco.languages.CompletionItemKind.Snippet,
-            insertText: "OUTPUT ${1:\"text\"}",
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            filterText: "o tab",
-            range,
-            sortText: "0_003",
-          },
-          {
-            label: "i -> INPUT",
-            detail: "Quick starter",
-            kind: monaco.languages.CompletionItemKind.Snippet,
-            insertText: "INPUT ${1:Variable}",
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            filterText: "i tab",
-            range,
-            sortText: "0_002",
-          },
-        ];
+            sortText: `1_${String(index).padStart(3, "0")}`,
+          }));
 
-        return { suggestions: [...routineSuggestions, ...shorthandSuggestions, ...keywordSuggestions] };
-      },
-    });
+          const routineSuggestions = ROUTINE_SUGGESTIONS.map((routine, index) => ({
+            label: routine.label,
+            detail: routine.detail,
+            kind: monaco.languages.CompletionItemKind.Function,
+            insertText: routine.insertText,
+            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+            range,
+            sortText: `0_${String(index).padStart(3, "0")}`,
+          }));
+
+          const shorthandSuggestions = [
+            {
+              label: "PRINT (alias)",
+              detail: "Alias for OUTPUT",
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertText: "OUTPUT ${1:\"text\"}",
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              filterText: "print p tab",
+              range,
+              sortText: "0_001",
+            },
+            {
+              label: "p -> OUTPUT",
+              detail: "Quick starter",
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertText: "OUTPUT ${1:\"text\"}",
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              filterText: "p tab",
+              range,
+              sortText: "0_000",
+            },
+            {
+              label: "o -> OUTPUT",
+              detail: "Quick starter",
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertText: "OUTPUT ${1:\"text\"}",
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              filterText: "o tab",
+              range,
+              sortText: "0_003",
+            },
+            {
+              label: "i -> INPUT",
+              detail: "Quick starter",
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertText: "INPUT ${1:Variable}",
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              filterText: "i tab",
+              range,
+              sortText: "0_002",
+            },
+          ];
+
+          return { suggestions: [...routineSuggestions, ...shorthandSuggestions, ...keywordSuggestions] };
+        },
+      });
+    }
 
     const model = editor.getModel();
     if (model) {
@@ -422,8 +436,7 @@ export function MonacoPseudocodeEditor({
       isProgrammaticEdit = false;
     });
 
-    // Apple-native dark theme matching UI.pen design
-    monaco.editor.defineTheme("examLabTheme", {
+    monaco.editor.defineTheme("examLabThemeDark", {
       base: "vs-dark",
       inherit: true,
       rules: [
@@ -454,7 +467,38 @@ export function MonacoPseudocodeEditor({
       },
     });
 
-    monaco.editor.setTheme("examLabTheme");
+    monaco.editor.defineTheme("examLabThemeLight", {
+      base: "vs",
+      inherit: true,
+      rules: [
+        { token: "keyword", foreground: "9B2D63" },
+        { token: "type", foreground: "0F7A94" },
+        { token: "predefined", foreground: "7856B3" },
+        { token: "string", foreground: "B45438" },
+        { token: "comment", foreground: "8C7B6A", fontStyle: "italic" },
+        { token: "number", foreground: "8D6A12" },
+        { token: "operator", foreground: "2A241F" },
+        { token: "identifier", foreground: "2D7A6D" },
+        { token: "delimiter", foreground: "2A241F" },
+      ],
+      colors: {
+        "editor.background": "#FFFFFF",
+        "editor.foreground": "#111111",
+        "editorLineNumber.foreground": "#CFCFCF",
+        "editorLineNumber.activeForeground": "#6B7280",
+        "editor.lineHighlightBackground": "#F5F5F5",
+        "editorCursor.foreground": "#111111",
+        "editor.selectionBackground": "#0B6E4F2A",
+        "editor.inactiveSelectionBackground": "#E5E5E5",
+        "editorIndentGuide.background1": "#E5E5E5",
+        "editorIndentGuide.activeBackground1": "#D1D5DB",
+        "editorWidget.background": "#FFFFFF",
+        "editorSuggestWidget.background": "#FFFFFF",
+        "editorSuggestWidget.selectedBackground": "#0B6E4F1F",
+      },
+    });
+
+    monaco.editor.setTheme(theme === "dark" ? "examLabThemeDark" : "examLabThemeLight");
   };
 
   useEffect(() => {
@@ -468,14 +512,38 @@ export function MonacoPseudocodeEditor({
     monacoRef.current.editor.setModelMarkers(model, "igcse-compiler", markers);
   }, [markers]);
 
+  useEffect(() => {
+    if (!monacoRef.current) {
+      return;
+    }
+
+    monacoRef.current.editor.setTheme(theme === "dark" ? "examLabThemeDark" : "examLabThemeLight");
+  }, [theme]);
+
   return (
     <Editor
+      key={documentKey}
       height="100%"
       defaultLanguage="igcse-pseudocode"
       value={value}
       onChange={(nextValue) => onChange(nextValue ?? "")}
       onMount={handleMount}
       options={editorOptions}
+      loading={
+        <div className="flex h-full items-center justify-center bg-[var(--bg)] px-6">
+          <div className="w-full max-w-xl rounded-[24px] border border-[var(--separator)] bg-[var(--surface)] p-6">
+            <p className="text-[11px] font-semibold tracking-[0.2em] text-[var(--accent)]">
+              EDITOR
+            </p>
+            <h3 className="mt-3 text-2xl font-semibold text-[var(--text)]">
+              Loading editor…
+            </h3>
+            <p className="mt-3 text-sm leading-6 text-[var(--text2)]">
+              Preparing syntax highlighting, autocomplete, and diagnostics.
+            </p>
+          </div>
+        </div>
+      }
     />
   );
 }
