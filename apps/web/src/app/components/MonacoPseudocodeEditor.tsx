@@ -462,8 +462,14 @@ export function MonacoPseudocodeEditor({
         "editorIndentGuide.background1": "#38383A",
         "editorIndentGuide.activeBackground1": "#48484A",
         "editorWidget.background": "#2C2C2E",
+        "editorWidget.border": "#48484A",
         "editorSuggestWidget.background": "#2C2C2E",
+        "editorSuggestWidget.border": "#48484A",
+        "editorSuggestWidget.foreground": "#E5E5EA",
         "editorSuggestWidget.selectedBackground": "#0A84FF30",
+        "editorSuggestWidget.selectedForeground": "#FFFFFF",
+        "editorSuggestWidget.highlightForeground": "#0A84FF",
+        "editorSuggestWidget.focusHighlightForeground": "#4DA3FF",
       },
     });
 
@@ -493,8 +499,14 @@ export function MonacoPseudocodeEditor({
         "editorIndentGuide.background1": "#E5E5E5",
         "editorIndentGuide.activeBackground1": "#D1D5DB",
         "editorWidget.background": "#FFFFFF",
+        "editorWidget.border": "#E5E5E5",
         "editorSuggestWidget.background": "#FFFFFF",
-        "editorSuggestWidget.selectedBackground": "#0B6E4F1F",
+        "editorSuggestWidget.border": "#E0E0E0",
+        "editorSuggestWidget.foreground": "#111111",
+        "editorSuggestWidget.selectedBackground": "#0B6E4F18",
+        "editorSuggestWidget.selectedForeground": "#111111",
+        "editorSuggestWidget.highlightForeground": "#0B6E4F",
+        "editorSuggestWidget.focusHighlightForeground": "#0B6E4F",
       },
     });
 
