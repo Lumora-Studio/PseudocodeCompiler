@@ -2,9 +2,19 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultWorkspace, createDocument, createEmptyWorkspace, createFolder, getChildNodes, setActiveDocument, type WorkspaceState } from "@igcse/workspace";
 
-const { loadWorkspaceMock, saveWorkspaceMock, compilePseudocodeMock, runMock, routerPushMock } = vi.hoisted(() => ({
+const {
+  loadWorkspaceMock,
+  saveWorkspaceMock,
+  loadWorkspaceSettingsMock,
+  saveWorkspaceSettingsMock,
+  compilePseudocodeMock,
+  runMock,
+  routerPushMock,
+} = vi.hoisted(() => ({
   loadWorkspaceMock: vi.fn<() => Promise<WorkspaceState>>(),
   saveWorkspaceMock: vi.fn<(state: WorkspaceState) => Promise<void>>(),
+  loadWorkspaceSettingsMock: vi.fn<() => Promise<{ autosaveIntervalMinutes: number }>>(),
+  saveWorkspaceSettingsMock: vi.fn<(settings: { autosaveIntervalMinutes: number }) => Promise<void>>(),
   compilePseudocodeMock: vi.fn(),
   runMock: vi.fn(),
   routerPushMock: vi.fn(),
@@ -26,8 +36,11 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("@/lib/storage", () => ({
+  DEFAULT_AUTOSAVE_INTERVAL_MINUTES: 5,
   loadWorkspace: loadWorkspaceMock,
+  loadWorkspaceSettings: loadWorkspaceSettingsMock,
   saveWorkspace: saveWorkspaceMock,
+  saveWorkspaceSettings: saveWorkspaceSettingsMock,
 }));
 
 vi.mock("@/compiler", () => ({
@@ -131,6 +144,35 @@ function getExplorerHeaderButton(name: string): HTMLElement {
   return match;
 }
 
+function getSaveButton(): HTMLElement {
+  return screen.getByRole("button", { name: "Save workspace" });
+}
+
+async function longPressExplorerRow(row: HTMLElement) {
+  vi.useFakeTimers();
+  try {
+    fireEvent.pointerDown(row, {
+      pointerType: "touch",
+      pointerId: 1,
+      clientX: 96,
+      clientY: 148,
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(430);
+    });
+
+    fireEvent.pointerUp(row, {
+      pointerType: "touch",
+      pointerId: 1,
+      clientX: 96,
+      clientY: 148,
+    });
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
 describe("HomePage workspace flow", () => {
   afterEach(() => {
     cleanup();
@@ -139,9 +181,13 @@ describe("HomePage workspace flow", () => {
   beforeEach(() => {
     loadWorkspaceMock.mockReset();
     saveWorkspaceMock.mockReset();
+    loadWorkspaceSettingsMock.mockReset();
+    saveWorkspaceSettingsMock.mockReset();
     compilePseudocodeMock.mockReset();
     runMock.mockReset();
     routerPushMock.mockReset();
+    loadWorkspaceSettingsMock.mockResolvedValue({ autosaveIntervalMinutes: 5 });
+    saveWorkspaceSettingsMock.mockResolvedValue();
     localStore.clear();
     Object.defineProperty(window, "localStorage", {
       configurable: true,
@@ -173,6 +219,73 @@ describe("HomePage workspace flow", () => {
     });
   });
 
+  it("saves the current workspace with Command/Ctrl+S", async () => {
+    loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
+    render(<HomePage />);
+
+    const editor = await screen.findByRole("textbox", { name: "Mock editor" });
+    fireEvent.change(editor, { target: { value: 'OUTPUT "Saved from shortcut"' } });
+    fireEvent.keyDown(window, { key: "s", ctrlKey: true });
+
+    await waitFor(() => {
+      expect(saveWorkspaceMock).toHaveBeenCalled();
+    });
+
+    const savedState = saveWorkspaceMock.mock.lastCall?.[0] as WorkspaceState;
+    expect(savedState.nodes["doc-main"]).toMatchObject({
+      source: 'OUTPUT "Saved from shortcut"',
+    });
+  });
+
+  it("autosaves after the selected interval", async () => {
+    const realSetTimeout = window.setTimeout.bind(window);
+    const setTimeoutSpy = vi
+      .spyOn(window, "setTimeout")
+      .mockImplementation(((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
+        if (timeout === 60_000 && typeof handler === "function") {
+          queueMicrotask(() => handler(...args));
+          return 1;
+        }
+
+        return realSetTimeout(handler, timeout, ...(args as []));
+      }) as typeof window.setTimeout);
+
+    try {
+      loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
+      render(<HomePage />);
+
+      const editor = await screen.findByRole("textbox", { name: "Mock editor" });
+      fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText("Autosave interval"), {
+          target: { value: "1" },
+        });
+        await Promise.resolve();
+      });
+
+      expect(saveWorkspaceSettingsMock).toHaveBeenCalledWith({
+        autosaveIntervalMinutes: 1,
+      });
+
+      await act(async () => {
+        fireEvent.change(editor, { target: { value: 'OUTPUT "Autosaved"' } });
+        await Promise.resolve();
+      });
+
+      await waitFor(() => {
+        expect(saveWorkspaceMock).toHaveBeenCalled();
+      });
+
+      const savedState = saveWorkspaceMock.mock.lastCall?.[0] as WorkspaceState;
+      expect(savedState.nodes["doc-main"]).toMatchObject({
+        source: 'OUTPUT "Autosaved"',
+      });
+    } finally {
+      setTimeoutSpy.mockRestore();
+    }
+  });
+
   it("creates and renames documents while persisting tree changes", async () => {
     loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
     render(<HomePage />);
@@ -185,11 +298,15 @@ describe("HomePage workspace flow", () => {
 
     fireEvent.contextMenu(getExplorerButton("Untitled.pseudo"));
     fireEvent.click(await screen.findByRole("button", { name: "Rename" }));
+    await waitFor(() => {
+      expect(screen.getByRole("dialog", { name: "Rename Item" })).toBeInTheDocument();
+    });
     fireEvent.change(screen.getByLabelText("Item name"), { target: { value: "Renamed Doc" } });
     fireEvent.click(screen.getByRole("button", { name: "Save Name" }));
     await waitFor(() => {
       expect(getExplorerButton("Renamed Doc.pseudo")).toBeInTheDocument();
     });
+    fireEvent.click(getSaveButton());
     expect(saveWorkspaceMock).toHaveBeenCalled();
   });
 
@@ -213,6 +330,7 @@ describe("HomePage workspace flow", () => {
 
     fireEvent.contextMenu(getExplorerButton("Helper.pseudo"));
     fireEvent.click(await screen.findByRole("button", { name: "Move Up" }));
+    fireEvent.click(getSaveButton());
 
     await waitFor(() => {
       const savedState = saveWorkspaceMock.mock.lastCall?.[0] as WorkspaceState;
@@ -228,31 +346,55 @@ describe("HomePage workspace flow", () => {
 
     const helperRow = getExplorerRow("Helper.pseudo");
 
-    vi.useFakeTimers();
-    try {
-      fireEvent.pointerDown(helperRow, {
-        pointerType: "touch",
-        pointerId: 1,
-        clientX: 96,
-        clientY: 148,
-      });
+    await longPressExplorerRow(helperRow);
 
-      await act(async () => {
-        vi.advanceTimersByTime(430);
-      });
+    expect(screen.getByRole("menu", { name: "Explorer actions" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
+  });
 
-      fireEvent.pointerUp(helperRow, {
-        pointerType: "touch",
-        pointerId: 1,
-        clientX: 96,
-        clientY: 148,
-      });
+  it("renames from the touch long-press explorer menu", async () => {
+    loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
+    render(<HomePage />);
+    await screen.findByRole("textbox", { name: "Mock editor" });
 
-      expect(screen.getByRole("menu", { name: "Explorer actions" })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
+    await longPressExplorerRow(getExplorerRow("Helper.pseudo"));
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog", { name: "Rename Item" })).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText("Item name"), { target: { value: "Renamed Helper" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Name" }));
+
+    await waitFor(() => {
+      expect(getExplorerButton("Renamed Helper.pseudo")).toBeInTheDocument();
+    });
+  });
+
+  it("creates a file inside a folder from the touch long-press explorer menu", async () => {
+    let workspace = createWorkspaceFixture();
+    workspace = createFolder(workspace, {
+      parentId: workspace.rootFolderId,
+      name: "Archive",
+      id: "folder-archive",
+      now: "2026-03-15T00:02:00.000Z",
+    });
+    loadWorkspaceMock.mockResolvedValue(workspace);
+    render(<HomePage />);
+    await screen.findByRole("textbox", { name: "Mock editor" });
+
+    await longPressExplorerRow(getExplorerRow("Archive"));
+    fireEvent.click(screen.getByRole("button", { name: "New File Here" }));
+
+    await waitFor(() => {
+      fireEvent.click(getSaveButton());
+      const savedState = saveWorkspaceMock.mock.lastCall?.[0] as WorkspaceState;
+      const createdDocument = Object.values(savedState.nodes).find(
+        (node) => node.type === "document" && node.parentId === "folder-archive" && node.name === "Untitled.pseudo",
+      );
+      expect(createdDocument).toBeDefined();
+    });
   });
 
   it("deletes the selected item from the explorer context menu", async () => {
@@ -272,6 +414,7 @@ describe("HomePage workspace flow", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
     expect(screen.getByText('Delete "Helper.pseudo"?')).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    fireEvent.click(getSaveButton());
 
     await waitFor(() => {
       const savedState = saveWorkspaceMock.mock.lastCall?.[0] as WorkspaceState;
@@ -302,6 +445,7 @@ describe("HomePage workspace flow", () => {
     fireEvent.dragStart(fileRow, { dataTransfer });
     fireEvent.dragOver(folderRow, { dataTransfer, clientY: 20 });
     fireEvent.drop(folderRow, { dataTransfer, clientY: 20 });
+    fireEvent.click(getSaveButton());
 
     await waitFor(() => {
       const savedState = saveWorkspaceMock.mock.lastCall?.[0] as WorkspaceState;
@@ -338,6 +482,7 @@ describe("HomePage workspace flow", () => {
     fireEvent.dragStart(sourceRow, { dataTransfer });
     fireEvent.dragOver(targetRow, { dataTransfer, clientY: 20 });
     fireEvent.drop(targetRow, { dataTransfer, clientY: 20 });
+    fireEvent.click(getSaveButton());
 
     await waitFor(() => {
       const savedState = saveWorkspaceMock.mock.lastCall?.[0] as WorkspaceState;

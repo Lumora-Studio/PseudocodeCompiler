@@ -157,6 +157,7 @@ export function WorkspaceSidebar({
   const dragPointerIdRef = useRef<number | null>(null);
   const suppressClickRef = useRef(false);
   const suppressClickTimerRef = useRef<number | null>(null);
+  const deferredContextActionFrameRef = useRef<number | null>(null);
   const treeContainerRef = useRef<HTMLDivElement | null>(null);
 
   const selectedNodeIds = useMemo(() => {
@@ -229,6 +230,9 @@ export function WorkspaceSidebar({
       if (suppressClickTimerRef.current !== null) {
         window.clearTimeout(suppressClickTimerRef.current);
       }
+      if (deferredContextActionFrameRef.current !== null) {
+        window.cancelAnimationFrame(deferredContextActionFrameRef.current);
+      }
     },
     [],
   );
@@ -289,6 +293,22 @@ export function WorkspaceSidebar({
       y: clampedY,
       nodeId: node.id,
       selection: nextSelection,
+    });
+  };
+
+  const closeContextMenuAndRun = (action: () => void) => {
+    setContextMenu(null);
+    if (deferredContextActionFrameRef.current !== null) {
+      window.cancelAnimationFrame(deferredContextActionFrameRef.current);
+    }
+
+    // Let the touch context menu fully dismiss before opening another surface
+    // or mutating the tree. This avoids iOS installed web app instability.
+    deferredContextActionFrameRef.current = window.requestAnimationFrame(() => {
+      deferredContextActionFrameRef.current = window.requestAnimationFrame(() => {
+        deferredContextActionFrameRef.current = null;
+        action();
+      });
     });
   };
 
@@ -983,8 +1003,7 @@ export function WorkspaceSidebar({
                   className={contextMenuButtonClassName}
                   style={{ color: "var(--text)" }}
                   onClick={() => {
-                    onCreateDocument(contextNode.id);
-                    setContextMenu(null);
+                    closeContextMenuAndRun(() => onCreateDocument(contextNode.id));
                   }}
                 >
                   New File Here
@@ -994,8 +1013,7 @@ export function WorkspaceSidebar({
                   className={contextMenuButtonClassName}
                   style={{ color: "var(--text)" }}
                   onClick={() => {
-                    onCreateFolder(contextNode.id);
-                    setContextMenu(null);
+                    closeContextMenuAndRun(() => onCreateFolder(contextNode.id));
                   }}
                 >
                   New Folder Here
@@ -1064,8 +1082,7 @@ export function WorkspaceSidebar({
                 className={contextMenuButtonClassName}
                 style={{ color: "var(--text)" }}
                 onClick={() => {
-                  onRenameNode(contextMenu.nodeId);
-                  setContextMenu(null);
+                  closeContextMenuAndRun(() => onRenameNode(contextMenu.nodeId));
                 }}
               >
                 Rename

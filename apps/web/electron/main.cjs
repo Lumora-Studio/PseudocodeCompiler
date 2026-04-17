@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell } = require("electron");
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require("electron");
 const http = require("http");
 const path = require("path");
 const fs = require("fs");
@@ -9,6 +9,130 @@ const shouldOpenDevTools = process.env.ELECTRON_OPEN_DEVTOOLS === "1";
 const devToolsMode = process.env.ELECTRON_DEVTOOLS_MODE || "detach";
 let staticServer;
 let staticPort;
+let nextSaveRequestId = 1;
+
+const rendererSaveState = new Map();
+const pendingSaveRequests = new Map();
+const allowCloseWindows = new WeakSet();
+
+function completePendingSaveRequest(requestId, success) {
+  const pending = pendingSaveRequests.get(requestId);
+  if (!pending) {
+    return;
+  }
+
+  clearTimeout(pending.timeoutId);
+  pendingSaveRequests.delete(requestId);
+  pending.resolve(Boolean(success));
+}
+
+function requestRendererSave(win, reason = "manual") {
+  if (!win || win.isDestroyed()) {
+    return Promise.resolve(false);
+  }
+
+  const requestId = nextSaveRequestId;
+  nextSaveRequestId += 1;
+
+  return new Promise((resolve) => {
+    const timeoutId = setTimeout(() => {
+      pendingSaveRequests.delete(requestId);
+      resolve(false);
+    }, 15000);
+
+    pendingSaveRequests.set(requestId, {
+      resolve,
+      timeoutId,
+      webContentsId: win.webContents.id,
+    });
+
+    win.webContents.send("app:request-save", {
+      requestId,
+      reason,
+    });
+  });
+}
+
+async function confirmWindowClose(win) {
+  const saveState = rendererSaveState.get(win.webContents.id);
+  if (!saveState?.dirty) {
+    return true;
+  }
+
+  const { response } = await dialog.showMessageBox(win, {
+    type: "question",
+    buttons: ["Save", "Don't Save", "Cancel"],
+    defaultId: 0,
+    cancelId: 2,
+    title: "Save before quitting?",
+    message: "Do you want to save files and folders before quitting?",
+    detail: "Unsaved changes in this workspace will be lost if you quit without saving.",
+  });
+
+  if (response === 2) {
+    return false;
+  }
+
+  if (response === 1) {
+    return true;
+  }
+
+  const saved = await requestRendererSave(win, "close");
+  if (saved) {
+    return true;
+  }
+
+  await dialog.showMessageBox(win, {
+    type: "error",
+    buttons: ["OK"],
+    defaultId: 0,
+    title: "Save failed",
+    message: "The workspace could not be saved.",
+    detail: "The window will stay open so you can try saving again.",
+  });
+  return false;
+}
+
+function buildAppMenu() {
+  const template = [];
+
+  if (process.platform === "darwin") {
+    template.push({
+      label: app.name,
+      submenu: [
+        { role: "about" },
+        { type: "separator" },
+        { role: "services" },
+        { type: "separator" },
+        { role: "hide" },
+        { role: "hideOthers" },
+        { role: "unhide" },
+        { type: "separator" },
+        { role: "quit" },
+      ],
+    });
+  }
+
+  template.push({
+    label: "File",
+    submenu: [
+      {
+        label: "Save",
+        accelerator: "CommandOrControl+S",
+        click: () => {
+          const focusedWindow = BrowserWindow.getFocusedWindow();
+          if (focusedWindow) {
+            void requestRendererSave(focusedWindow, "manual");
+          }
+        },
+      },
+      { type: "separator" },
+      process.platform === "darwin" ? { role: "close" } : { role: "quit" },
+    ],
+  });
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
 
 async function startStaticServer() {
   const staticPath = path.join(__dirname, "..", "out");
@@ -66,6 +190,33 @@ async function createWindow() {
     return { action: "deny" };
   });
 
+  win.on("close", (event) => {
+    if (allowCloseWindows.has(win)) {
+      return;
+    }
+
+    event.preventDefault();
+    void (async () => {
+      const shouldClose = await confirmWindowClose(win);
+      if (!shouldClose) {
+        return;
+      }
+
+      allowCloseWindows.add(win);
+      win.close();
+    })();
+  });
+
+  win.on("closed", () => {
+    rendererSaveState.delete(win.webContents.id);
+
+    for (const [requestId, pending] of pendingSaveRequests.entries()) {
+      if (pending.webContentsId === win.webContents.id) {
+        completePendingSaveRequest(requestId, false);
+      }
+    }
+  });
+
   if (isDev) {
     const devUrl = process.env.ELECTRON_START_URL || "http://localhost:3000";
     await win.loadURL(devUrl);
@@ -84,6 +235,8 @@ app.whenReady().then(() => {
   if (isDev && process.platform === "darwin" && fs.existsSync(dockIconPath)) {
     app.dock.setIcon(dockIconPath);
   }
+
+  buildAppMenu();
 
   createWindow().catch((error) => {
     console.error("Failed to create window:", error);
@@ -109,4 +262,20 @@ app.on("before-quit", () => {
   if (staticServer) {
     staticServer.close();
   }
+});
+
+ipcMain.on("app:update-save-state", (event, payload) => {
+  rendererSaveState.set(event.sender.id, {
+    dirty: Boolean(payload?.dirty),
+  });
+});
+
+ipcMain.on("app:save-response", (event, payload) => {
+  const requestId = payload?.requestId;
+  const pending = pendingSaveRequests.get(requestId);
+  if (!pending || pending.webContentsId !== event.sender.id) {
+    return;
+  }
+
+  completePendingSaveRequest(requestId, payload?.success);
 });

@@ -99,6 +99,33 @@ describe("workspace storage", () => {
     expect(getActiveDocument(loaded)?.source).toBe('OUTPUT "Fallback"');
   });
 
+  it("loads and saves workspace settings with a five minute default", async () => {
+    const storage = await import("@/lib/storage");
+
+    expect(await storage.loadWorkspaceSettings()).toEqual({
+      autosaveIntervalMinutes: 5,
+    });
+
+    await storage.saveWorkspaceSettings({
+      autosaveIntervalMinutes: 10,
+    });
+
+    await expect(storage.loadWorkspaceSettings()).resolves.toEqual({
+      autosaveIntervalMinutes: 10,
+    });
+  });
+
+  it("normalizes malformed workspace settings back to a safe autosave interval", async () => {
+    dbStore.set("settings", {
+      autosaveIntervalMinutes: "often",
+    });
+    const storage = await import("@/lib/storage");
+
+    await expect(storage.loadWorkspaceSettings()).resolves.toEqual({
+      autosaveIntervalMinutes: 5,
+    });
+  });
+
   it("resets only once per dev session when the dev reset flag is enabled", async () => {
     vi.resetModules();
     vi.stubEnv("NEXT_PUBLIC_RESET_WORKSPACE_ON_DEV", "1");

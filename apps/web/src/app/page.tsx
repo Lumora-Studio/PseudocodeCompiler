@@ -22,6 +22,7 @@ import {
   Folder,
   PanelLeft,
   Play,
+  Save as SaveIcon,
   Settings,
   Terminal,
   Trash2,
@@ -64,6 +65,7 @@ const MIN_TERMINAL_HEIGHT = 60;
 const TOUCH_TABLET_BREAKPOINT = 744;
 const TOUCH_SIDEBAR_WIDTH = 280;
 const TOUCH_OUTPUT_HEIGHT = 140;
+const AUTOSAVE_INTERVAL_OPTIONS = [1, 5, 10, 15, 30];
 
 type TouchTab = "editor" | "files" | "output" | "settings";
 
@@ -77,6 +79,18 @@ interface RenameDialogState {
 interface DeleteDialogState {
   nodeIds: string[];
   message: string;
+}
+
+interface DesktopSaveRequest {
+  reason?: "manual" | "close";
+}
+
+interface DesktopElectronBridge {
+  isDesktop?: boolean;
+  onSaveRequested?: (
+    listener: (request: DesktopSaveRequest) => boolean | Promise<boolean>,
+  ) => (() => void) | void;
+  setDirtyState?: (dirty: boolean) => void;
 }
 
 const THEME_OPTIONS: Array<{ value: ThemeMode; label: string; description: string }> = [
@@ -110,9 +124,14 @@ export default function HomePage() {
     pendingInput,
     isRunning,
     runningTerminalPanelId,
+    autosaveIntervalMinutes,
+    hasUnsavedChanges,
+    isSaving,
     saveError,
     appNotice,
     dismissNotice,
+    saveWorkspaceNow,
+    updateAutosaveInterval,
     setPendingInputText,
     submitPendingInput,
     cancelPendingInput,
@@ -144,15 +163,15 @@ export default function HomePage() {
   const [touchSidebarVisible, setTouchSidebarVisible] = useState(true);
   const [touchOutputVisible, setTouchOutputVisible] = useState(true);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
-  const [themeMode, setThemeMode] = useState<ThemeMode>("system");
-  const [systemTheme, setSystemTheme] = useState<"dark" | "light">("dark");
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => loadThemeMode());
+  const [systemTheme, setSystemTheme] = useState<"dark" | "light">(() => getSystemTheme());
   const [viewportSize, setViewportSize] = useState(() => ({
     width: typeof window === "undefined" ? 1280 : window.innerWidth,
     height: typeof window === "undefined" ? 800 : window.innerHeight,
   }));
   const [isDesktopShell] = useState(() => {
     if (typeof window === "undefined") return false;
-    const w = window as Window & { electron?: { isDesktop?: boolean } };
+    const w = window as Window & { electron?: DesktopElectronBridge };
     return Boolean(w.electron?.isDesktop);
   });
   const [isAppleTouchUi] = useState(() =>
@@ -200,6 +219,11 @@ export default function HomePage() {
     ? (terminalOutputs[terminalPanelId] ?? "")
     : "";
   const resolvedTheme = resolveTheme(themeMode, systemTheme);
+  const saveStatusText = isSaving
+    ? "Saving files and folders…"
+    : hasUnsavedChanges
+      ? "Unsaved changes"
+      : "All files and folders are saved.";
 
   /* ── effects ── */
 
@@ -209,13 +233,6 @@ export default function HomePage() {
       renameInputRef.current?.select();
     }
   }, [renameDialog]);
-
-  useEffect(() => {
-    const initialMode = loadThemeMode();
-    const initialSystemTheme = getSystemTheme();
-    setThemeMode(initialMode);
-    setSystemTheme(initialSystemTheme);
-  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
@@ -235,6 +252,60 @@ export default function HomePage() {
     applyResolvedTheme(resolvedTheme);
     saveThemeMode(themeMode);
   }, [resolvedTheme, themeMode]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        void saveWorkspaceNow("manual");
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [saveWorkspaceNow]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !hasUnsavedChanges) {
+      return;
+    }
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const electron = (window as Window & { electron?: DesktopElectronBridge }).electron;
+    electron?.setDirtyState?.(hasUnsavedChanges);
+  }, [hasUnsavedChanges]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const electron = (window as Window & { electron?: DesktopElectronBridge }).electron;
+    if (!electron?.onSaveRequested) {
+      return;
+    }
+
+    return electron.onSaveRequested((request) =>
+      saveWorkspaceNow(request.reason === "close" ? "close" : "manual"),
+    );
+  }, [saveWorkspaceNow]);
 
   const scrollOutputToBottom = useCallback(() => {
     if (!shouldAutoScrollOutputRef.current) {
@@ -361,6 +432,9 @@ export default function HomePage() {
     shouldAutoScrollOutputRef.current = true;
     if (terminalPanelId) clearTerminal(terminalPanelId);
   }, [clearTerminal, terminalPanelId]);
+  const handleManualSave = useCallback(() => {
+    void saveWorkspaceNow("manual");
+  }, [saveWorkspaceNow]);
   const handleThemeModeChange = useCallback((mode: ThemeMode) => {
     setThemeMode(mode);
   }, []);
@@ -444,6 +518,54 @@ export default function HomePage() {
         Current resolved appearance:{" "}
         <span className="font-semibold capitalize text-[var(--text2)]">{resolvedTheme}</span>
       </p>
+    </div>
+  );
+
+  const renderSaveSettings = (compact = false) => (
+    <div className={compact ? "mt-6 space-y-3" : "space-y-3"}>
+      <div>
+        <p className="text-[11px] font-semibold tracking-[0.18em] text-[var(--text3)]">
+          SAVE
+        </p>
+        <h3 className="mt-2 text-[22px] font-semibold text-[var(--text)]">Files and folders</h3>
+        <p className="mt-2 max-w-md text-sm leading-6 text-[var(--text2)]">
+          Save the current workspace manually with Command/Ctrl+S or let the app autosave it on a
+          timer.
+        </p>
+      </div>
+
+      <div className="rounded-2xl border border-[var(--separator)] bg-[var(--surface)] px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-[var(--text)]">Workspace status</p>
+            <p className="mt-1 text-sm text-[var(--text2)]">{saveStatusText}</p>
+          </div>
+          <button
+            type="button"
+            className="inline-flex h-10 items-center justify-center rounded-2xl bg-[var(--accent)] px-4 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-60"
+            onClick={handleManualSave}
+            disabled={isSaving}
+          >
+            {isSaving ? "Saving…" : "Save Now"}
+          </button>
+        </div>
+      </div>
+
+      <label className="block">
+        <span className="mb-2 block text-sm font-semibold text-[var(--text)]">Autosave every</span>
+        <select
+          aria-label="Autosave interval"
+          value={String(autosaveIntervalMinutes)}
+          onChange={(event) => updateAutosaveInterval(Number(event.target.value))}
+          className="h-11 w-full rounded-2xl border border-[var(--separator)] bg-[var(--surface)] px-4 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
+        >
+          {AUTOSAVE_INTERVAL_OPTIONS.map((minutes) => (
+            <option key={minutes} value={minutes}>
+              {minutes} {minutes === 1 ? "minute" : "minutes"}
+            </option>
+          ))}
+        </select>
+      </label>
     </div>
   );
 
@@ -719,6 +841,16 @@ export default function HomePage() {
                 <div className="flex flex-1 items-center justify-end gap-3">
                   <button
                     type="button"
+                    className="flex h-8 items-center gap-1.5 rounded-2xl border border-[var(--separator)] bg-[var(--surface)] px-3 text-[var(--text2)] transition hover:bg-[var(--surface2)] disabled:opacity-60"
+                    aria-label={isSaving ? "Saving workspace" : "Save workspace"}
+                    onClick={handleManualSave}
+                    disabled={isSaving}
+                  >
+                    <SaveIcon size={14} />
+                    <span className="text-sm font-semibold">{isSaving ? "Saving…" : "Save"}</span>
+                  </button>
+                  <button
+                    type="button"
                     className="flex h-8 items-center gap-1.5 rounded-2xl bg-[var(--green)] px-4 text-white transition hover:brightness-110 disabled:opacity-50"
                     aria-label={isRunning ? "Running" : "Run"}
                     onClick={handleTouchRun}
@@ -822,6 +954,15 @@ export default function HomePage() {
                 <div className="flex-1" />
                 <button
                   type="button"
+                  className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--accent)] transition hover:bg-[var(--hover)] disabled:opacity-60"
+                  aria-label={isSaving ? "Saving workspace" : "Save workspace"}
+                  onClick={handleManualSave}
+                  disabled={isSaving}
+                >
+                  <SaveIcon size={18} />
+                </button>
+                <button
+                  type="button"
                   className="flex h-7 items-center gap-1 rounded-[14px] bg-[var(--green)] px-3 text-white transition hover:brightness-110 disabled:opacity-50"
                   aria-label={isRunning ? "Running" : "Run"}
                   onClick={handleTouchRun}
@@ -887,6 +1028,7 @@ export default function HomePage() {
                       <p className="mt-4 max-w-xs text-sm leading-6 text-[var(--text2)]">
                         Open the manual, review the language guide, and keep the workspace controls one tap away.
                       </p>
+                      {renderSaveSettings(true)}
                       {renderThemeSettings(true)}
                       <button
                         type="button"
@@ -1054,6 +1196,16 @@ export default function HomePage() {
 
         {/* Toolbar */}
         <div className="app-no-drag flex items-center gap-1.5">
+          <button
+            type="button"
+            className="flex h-7 items-center gap-1.5 rounded-[14px] border border-[var(--separator)] px-3 py-[5px] text-[var(--text2)] transition hover:bg-[var(--hover)] disabled:opacity-60"
+            aria-label={isSaving ? "Saving workspace" : "Save workspace"}
+            onClick={handleManualSave}
+            disabled={isSaving}
+          >
+            <SaveIcon size={12} />
+            <span className="text-xs font-semibold">{isSaving ? "Saving…" : "Save"}</span>
+          </button>
           <button
             type="button"
             className="flex h-7 items-center gap-1.5 rounded-[14px] bg-[var(--green)] px-3.5 py-[5px] text-white transition hover:brightness-110 disabled:opacity-50"
@@ -1335,7 +1487,7 @@ export default function HomePage() {
                   id="settings-dialog-title"
                   className="mt-2 text-2xl font-semibold text-[var(--text)]"
                 >
-                  Appearance
+                  Workspace
                 </h2>
               </div>
               <button
@@ -1346,7 +1498,10 @@ export default function HomePage() {
                 Close
               </button>
             </div>
-            <div className="mt-5">{renderThemeSettings()}</div>
+            <div className="mt-5 space-y-6">
+              {renderSaveSettings()}
+              {renderThemeSettings()}
+            </div>
           </div>
         </div>
       )}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   InteractionManager,
+  Keyboard,
   Modal,
   Platform,
   Pressable,
@@ -273,6 +274,8 @@ export function WorkspaceTree({
 }: WorkspaceTreeProps) {
   const { colors } = useAppTheme();
   const styles = useThemedStyles(useStyles);
+  const platformWithPad = Platform as typeof Platform & { isPad?: boolean };
+  const isPad = Platform.OS === "ios" && platformWithPad.isPad === true;
   const flattened = useMemo(() => flattenVisibleNodes(workspace), [workspace]);
   const visibleNodeIds = useMemo(
     () => flattened.map(({ node }) => node.id),
@@ -465,6 +468,12 @@ export function WorkspaceTree({
     });
   }, []);
 
+  const dismissTreeKeyboard = useCallback(() => {
+    if (isPad) {
+      Keyboard.dismiss();
+    }
+  }, [isPad]);
+
   const scheduleFolderExpand = useCallback(
     (folderId: string) => {
       if (expandedFolders.has(folderId)) {
@@ -616,6 +625,57 @@ export function WorkspaceTree({
     [clearPendingPress, workspace.nodes],
   );
 
+  const presentRenamePrompt = useCallback(
+    (nodeId: string) => {
+      if (!isPad) {
+        presentRenameDialog(nodeId);
+        return;
+      }
+
+      const node = workspace.nodes[nodeId];
+      if (!node) {
+        return;
+      }
+
+      dismissTreeKeyboard();
+      clearPendingPress();
+      setSelectionState([node.id]);
+      setAnchorState(node.id);
+      dismissRenameDialog();
+
+      Alert.prompt(
+        node.type === "folder" ? "Rename Folder" : "Rename File",
+        undefined,
+        [
+          {
+            text: "Cancel",
+            style: "cancel",
+          },
+          {
+            text: "Rename",
+            onPress: (value?: string) => {
+              const nextName = value?.trim();
+              if (nextName) {
+                onRenameNode(node.id, nextName);
+              }
+            },
+          },
+        ],
+        "plain-text",
+        node.name,
+      );
+    },
+    [
+      clearPendingPress,
+      dismissRenameDialog,
+      dismissTreeKeyboard,
+      isPad,
+      onRenameNode,
+      presentRenameDialog,
+      workspace.nodes,
+    ],
+  );
+
   const openRenameDialog = useCallback(
     (node: WorkspaceNode) => {
       if (Platform.OS === "ios" && actionSheet) {
@@ -627,13 +687,26 @@ export function WorkspaceTree({
 
       pendingRenameNodeIdRef.current = null;
       setActionSheet(null);
+      dismissTreeKeyboard();
+      if (isPad) {
+        presentRenamePrompt(node.id);
+        return;
+      }
       presentRenameDialog(node.id);
     },
-    [actionSheet, clearPendingPress, presentRenameDialog],
+    [
+      actionSheet,
+      clearPendingPress,
+      dismissTreeKeyboard,
+      isPad,
+      presentRenameDialog,
+      presentRenamePrompt,
+    ],
   );
 
   const openActionSheetForNode = useCallback(
     (node: WorkspaceNode) => {
+      dismissTreeKeyboard();
       clearPendingPress();
       const nextSelection = selectedNodeSet.has(node.id)
         ? orderedSelection
@@ -655,7 +728,7 @@ export function WorkspaceTree({
         selection: nextSelection,
       });
     },
-    [clearPendingPress, orderedSelection, selectedNodeSet],
+    [clearPendingPress, dismissTreeKeyboard, orderedSelection, selectedNodeSet],
   );
 
   const handleNodeSelection = useCallback(
@@ -691,11 +764,17 @@ export function WorkspaceTree({
 
   const startDrag = useCallback(
     (nodeId: string, pageX: number, pageY: number) => {
+      if (actionSheet || renameDialog) {
+        clearTouchGesture();
+        return;
+      }
+
       const draggedIds = resolveDraggedNodeIds(nodeId);
       if (draggedIds.length === 0) {
         return;
       }
 
+      dismissTreeKeyboard();
       measureViewport();
       suppressNextPress();
       clearPendingPress();
@@ -707,9 +786,12 @@ export function WorkspaceTree({
       clearTouchGesture();
     },
     [
+      actionSheet,
       clearPendingPress,
       clearTouchGesture,
+      dismissTreeKeyboard,
       measureViewport,
+      renameDialog,
       resolveDraggedNodeIds,
       resolvePointDropHint,
       setDraggingSelection,
@@ -719,6 +801,12 @@ export function WorkspaceTree({
 
   const handleDragMove = useCallback(
     (event: GestureResponderEvent) => {
+      if (actionSheet || renameDialog) {
+        clearDragState();
+        clearTouchGesture();
+        return;
+      }
+
       const draggedIds = draggingNodeIdsRef.current;
       if (draggedIds.length > 0) {
         setDropHint(
@@ -757,11 +845,24 @@ export function WorkspaceTree({
         );
       }
     },
-    [clearTouchGesture, resolvePointDropHint, startDrag],
+    [
+      actionSheet,
+      clearDragState,
+      clearTouchGesture,
+      renameDialog,
+      resolvePointDropHint,
+      startDrag,
+    ],
   );
 
   const handleDragEnd = useCallback(
     (event: GestureResponderEvent) => {
+      if (actionSheet || renameDialog) {
+        clearDragState();
+        clearTouchGesture();
+        return;
+      }
+
       const draggedIds = draggingNodeIdsRef.current;
       if (draggedIds.length === 0) {
         clearTouchGesture();
@@ -802,9 +903,11 @@ export function WorkspaceTree({
       onMoveNodes(draggedIds, target.targetFolderId, target.targetIndex);
     },
     [
+      actionSheet,
       clearDragState,
       clearTouchGesture,
       onMoveNodes,
+      renameDialog,
       resolvePointDropHint,
       workspace,
     ],
@@ -1152,6 +1255,11 @@ export function WorkspaceTree({
 
           pendingRenameNodeIdRef.current = null;
           requestAnimationFrame(() => {
+            if (isPad) {
+              presentRenamePrompt(pendingRenameNodeId);
+              return;
+            }
+
             presentRenameDialog(pendingRenameNodeId);
           });
         }}
