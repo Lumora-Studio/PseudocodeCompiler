@@ -6,10 +6,14 @@ const monorepoRoot = path.resolve(__dirname, "../..");
 
 const nextConfig: NextConfig = {
   output: isElectronBuild ? "export" : undefined,
+  outputFileTracingRoot: monorepoRoot,
   images: {
-    unoptimized: true,
+    unoptimized: isElectronBuild,
   },
-  transpilePackages: ["@igcse/compiler", "@igcse/workspace"],
+  experimental: {
+    optimizePackageImports: ["lucide-react"],
+  },
+  transpilePackages: ["@pseudocode-compiler/compiler", "@pseudocode-compiler/workspace"],
   turbopack: {
     root: monorepoRoot,
   },

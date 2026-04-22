@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Keyboard,
+  KeyboardEvent,
   Platform,
   Pressable,
   ScrollView,
@@ -327,8 +328,9 @@ export default function EditorScreen() {
     shortestSide >= 744;
 
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const [keyboardOverlap, setKeyboardOverlap] = useState(0);
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
-  const [isOutputVisible, setIsOutputVisible] = useState(true);
+  const [isOutputVisible, setIsOutputVisible] = useState(false);
   const [editorRestoreToken, setEditorRestoreToken] = useState(0);
   const [phoneTab, setPhoneTab] = useState<PhoneTab>("editor");
   const hasMountedRef = useRef(false);
@@ -373,9 +375,52 @@ export default function EditorScreen() {
     };
   }, [isTabletLayout]);
 
+  const resolveKeyboardOverlap = useCallback(
+    (event?: KeyboardEvent) => {
+      if (Platform.OS !== "ios" || !event?.endCoordinates) {
+        return 0;
+      }
+
+      const frameBottom = insets.top + height;
+      const overlapFromScreenY = Math.max(
+        0,
+        frameBottom - event.endCoordinates.screenY,
+      );
+      const overlapFromHeight = Math.max(
+        0,
+        event.endCoordinates.height - insets.bottom,
+      );
+
+      return Math.max(overlapFromScreenY, overlapFromHeight);
+    },
+    [height, insets.bottom, insets.top],
+  );
+
   useEffect(() => {
-    const handleKeyboardShow = () => setIsKeyboardVisible(true);
-    const handleKeyboardHide = () => setIsKeyboardVisible(false);
+    const handleKeyboardShow = (event?: KeyboardEvent) => {
+      if (Platform.OS !== "ios") {
+        setKeyboardOverlap(0);
+        setIsKeyboardVisible(true);
+        return;
+      }
+
+      const overlap = resolveKeyboardOverlap(event);
+      setKeyboardOverlap(overlap);
+      setIsKeyboardVisible(overlap > 0);
+    };
+    const handleKeyboardFrameChange = (event?: KeyboardEvent) => {
+      if (Platform.OS !== "ios") {
+        return;
+      }
+
+      const overlap = resolveKeyboardOverlap(event);
+      setKeyboardOverlap(overlap);
+      setIsKeyboardVisible(overlap > 0);
+    };
+    const handleKeyboardHide = () => {
+      setKeyboardOverlap(0);
+      setIsKeyboardVisible(false);
+    };
 
     const showSubscription = Keyboard.addListener(
       "keyboardWillShow",
@@ -393,14 +438,24 @@ export default function EditorScreen() {
       "keyboardDidHide",
       handleKeyboardHide,
     );
+    const frameChangeSubscription = Keyboard.addListener(
+      "keyboardWillChangeFrame",
+      handleKeyboardFrameChange,
+    );
+    const frameChangeFallbackSubscription = Keyboard.addListener(
+      "keyboardDidChangeFrame",
+      handleKeyboardFrameChange,
+    );
 
     return () => {
       showSubscription.remove();
       showFallbackSubscription.remove();
       hideSubscription.remove();
       hideFallbackSubscription.remove();
+      frameChangeSubscription.remove();
+      frameChangeFallbackSubscription.remove();
     };
-  }, []);
+  }, [resolveKeyboardOverlap]);
 
   useEffect(() => {
     if (isTabletLayout || phoneTab === "editor") {
@@ -409,6 +464,21 @@ export default function EditorScreen() {
 
     Keyboard.dismiss();
   }, [isTabletLayout, phoneTab]);
+
+  useEffect(() => {
+    if (!pendingInputPrompt) {
+      return;
+    }
+
+    Keyboard.dismiss();
+
+    if (isTabletLayout) {
+      setIsOutputVisible(true);
+      return;
+    }
+
+    setPhoneTab("output");
+  }, [isTabletLayout, pendingInputPrompt]);
 
   useFocusEffect(
     useCallback(() => {
@@ -437,6 +507,7 @@ export default function EditorScreen() {
       : Math.max(insets.bottom, 8);
   const phoneScreenHeight = height - insets.top;
   const tabletScreenHeight = height - insets.top - insets.bottom;
+  const keyboardInset = Platform.OS === "ios" ? keyboardOverlap : 0;
   const phoneBodyHeight = Math.max(
     0,
     phoneScreenHeight -
@@ -448,6 +519,8 @@ export default function EditorScreen() {
     0,
     tabletScreenHeight - dimensions.tabletTopBarHeight - StyleSheet.hairlineWidth,
   );
+  const phoneBodyVisibleHeight = Math.max(0, phoneBodyHeight - keyboardInset);
+  const tabletBodyVisibleHeight = Math.max(0, tabletBodyHeight - keyboardInset);
   const rootInsetStyle = isTabletLayout
     ? ({
         width,
@@ -545,7 +618,10 @@ export default function EditorScreen() {
             ) : null}
 
             <View
-              style={[styles.tabletBody, { flex: 0, height: tabletBodyHeight }]}
+              style={[
+                styles.tabletBody,
+                { flex: 0, height: tabletBodyVisibleHeight },
+              ]}
             >
               {isSidebarVisible ? (
                 <>
@@ -687,7 +763,9 @@ export default function EditorScreen() {
               </View>
             ) : null}
 
-            <View style={[styles.phoneBody, { flex: 0, height: phoneBodyHeight }]}>
+            <View
+              style={[styles.phoneBody, { flex: 0, height: phoneBodyVisibleHeight }]}
+            >
               <View style={styles.phoneContent}>
                 <View
                   pointerEvents={phoneTab === "editor" ? "auto" : "none"}

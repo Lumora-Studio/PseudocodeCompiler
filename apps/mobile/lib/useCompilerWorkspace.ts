@@ -10,8 +10,8 @@ import type { RefObject } from "react";
 import { Alert } from "react-native";
 import type WebView from "react-native-webview";
 import type { WebViewMessageEvent } from "react-native-webview";
-import { compilePseudocode } from "@igcse/compiler";
-import type { Diagnostic, RunResult } from "@igcse/compiler/types";
+import { compilePseudocode } from "@pseudocode-compiler/compiler";
+import type { Diagnostic, RunResult } from "@pseudocode-compiler/compiler/types";
 import {
   createDocument,
   createFolder,
@@ -28,7 +28,7 @@ import {
   type CompileSummary,
   type WorkspaceDocumentNode,
   type WorkspaceState,
-} from "@igcse/workspace";
+} from "@pseudocode-compiler/workspace";
 import { PythonRunner } from "./pythonRunner";
 import { loadWorkspace, saveWorkspace } from "./storage";
 
@@ -51,7 +51,7 @@ WHILE total < limit DO
     OUTPUT "looping"
 ENDWHILE`;
 
-const INITIAL_TERMINAL_TEXT = `$ pseudocode run layout.pseudo
+const INITIAL_TERMINAL_TEXT = `$ pseudocode-compiler run layout.pseudo
 Enter name: Alex
 Hello, Alex
 Welcome User`;

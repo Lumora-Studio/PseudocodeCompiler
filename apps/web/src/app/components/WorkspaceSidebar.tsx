@@ -26,12 +26,13 @@ import {
   getChildNodes,
   type WorkspaceNode,
   type WorkspaceState,
-} from "@igcse/workspace";
+} from "@pseudocode-compiler/workspace";
 import packageJson from "../../../package.json";
 import { supportsDesktopNativeDragAndDrop } from "@/lib/appleTouch";
 
 interface WorkspaceSidebarProps {
   workspace: WorkspaceState;
+  actionsDisabled?: boolean;
   onSelectDocument: (documentId: string) => void;
   onToggleFolder: (folderId: string) => void;
   onExpandFolder: (folderId: string) => void;
@@ -73,7 +74,7 @@ interface SelectionModifierState {
 const CONTEXT_MENU_WIDTH = 248;
 const CONTEXT_MENU_HEIGHT = 320;
 const CONTEXT_MENU_MARGIN = 14;
-const EXPLORER_RELEASE_LABEL = `alpha - version ${packageJson.version}`;
+const EXPLORER_RELEASE_LABEL = `V${packageJson.version}`;
 
 const contextMenuButtonClassName =
   "block w-full appearance-none rounded-md border-0 bg-transparent px-3 py-2 text-left text-sm transition hover:bg-[var(--hover)] disabled:cursor-not-allowed";
@@ -131,6 +132,7 @@ function getRangeSelection(nodeIds: string[], anchorId: string, currentId: strin
 
 export function WorkspaceSidebar({
   workspace,
+  actionsDisabled = false,
   onSelectDocument,
   onToggleFolder,
   onExpandFolder,
@@ -157,6 +159,7 @@ export function WorkspaceSidebar({
   const dragPointerIdRef = useRef<number | null>(null);
   const suppressClickRef = useRef(false);
   const suppressClickTimerRef = useRef<number | null>(null);
+  const deferredContextActionFrameRef = useRef<number | null>(null);
   const treeContainerRef = useRef<HTMLDivElement | null>(null);
 
   const selectedNodeIds = useMemo(() => {
@@ -229,6 +232,9 @@ export function WorkspaceSidebar({
       if (suppressClickTimerRef.current !== null) {
         window.clearTimeout(suppressClickTimerRef.current);
       }
+      if (deferredContextActionFrameRef.current !== null) {
+        window.cancelAnimationFrame(deferredContextActionFrameRef.current);
+      }
     },
     [],
   );
@@ -289,6 +295,22 @@ export function WorkspaceSidebar({
       y: clampedY,
       nodeId: node.id,
       selection: nextSelection,
+    });
+  };
+
+  const closeContextMenuAndRun = (action: () => void) => {
+    setContextMenu(null);
+    if (deferredContextActionFrameRef.current !== null) {
+      window.cancelAnimationFrame(deferredContextActionFrameRef.current);
+    }
+
+    // Let the touch context menu fully dismiss before opening another surface
+    // or mutating the tree. This avoids iOS installed web app instability.
+    deferredContextActionFrameRef.current = window.requestAnimationFrame(() => {
+      deferredContextActionFrameRef.current = window.requestAnimationFrame(() => {
+        deferredContextActionFrameRef.current = null;
+        action();
+      });
     });
   };
 
@@ -806,9 +828,10 @@ export function WorkspaceSidebar({
         <div className="flex items-center gap-1">
           <button
             type="button"
-            className="flex h-7 items-center gap-1 rounded-md px-2 text-[var(--text3)] transition hover:bg-[var(--hover)] hover:text-[var(--text2)]"
+            className="flex h-7 items-center gap-1 rounded-md px-2 text-[var(--text3)] transition hover:bg-[var(--hover)] hover:text-[var(--text2)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-[var(--text3)]"
             aria-label="Create File"
             title="Create File"
+            disabled={actionsDisabled}
             onClick={() => onCreateDocument(createTargetParentId)}
           >
             <Plus size={16} />
@@ -816,9 +839,10 @@ export function WorkspaceSidebar({
           </button>
           <button
             type="button"
-            className="flex h-7 items-center gap-1 rounded-md px-2 text-[var(--text3)] transition hover:bg-[var(--hover)] hover:text-[var(--text2)]"
+            className="flex h-7 items-center gap-1 rounded-md px-2 text-[var(--text3)] transition hover:bg-[var(--hover)] hover:text-[var(--text2)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-[var(--text3)]"
             aria-label="Create Folder"
             title="Create Folder"
+            disabled={actionsDisabled}
             onClick={() => onCreateFolder(createTargetParentId)}
           >
             <FolderPlus size={16} />
@@ -983,8 +1007,7 @@ export function WorkspaceSidebar({
                   className={contextMenuButtonClassName}
                   style={{ color: "var(--text)" }}
                   onClick={() => {
-                    onCreateDocument(contextNode.id);
-                    setContextMenu(null);
+                    closeContextMenuAndRun(() => onCreateDocument(contextNode.id));
                   }}
                 >
                   New File Here
@@ -994,8 +1017,7 @@ export function WorkspaceSidebar({
                   className={contextMenuButtonClassName}
                   style={{ color: "var(--text)" }}
                   onClick={() => {
-                    onCreateFolder(contextNode.id);
-                    setContextMenu(null);
+                    closeContextMenuAndRun(() => onCreateFolder(contextNode.id));
                   }}
                 >
                   New Folder Here
@@ -1064,8 +1086,7 @@ export function WorkspaceSidebar({
                 className={contextMenuButtonClassName}
                 style={{ color: "var(--text)" }}
                 onClick={() => {
-                  onRenameNode(contextMenu.nodeId);
-                  setContextMenu(null);
+                  closeContextMenuAndRun(() => onRenameNode(contextMenu.nodeId));
                 }}
               >
                 Rename

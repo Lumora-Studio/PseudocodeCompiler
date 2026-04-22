@@ -71,7 +71,7 @@ export default function CopyableCodeBlock({
     <div className={`rounded-md border border-[var(--panel-border)] bg-[var(--panel-bg)] ${className}`.trim()}>
       <div className="flex items-center justify-between gap-3 border-b border-[var(--panel-border)] px-3 py-2">
         <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--accent)]">
-          Pseudocode
+          Pseudocode Compiler
         </span>
         <button
           type="button"

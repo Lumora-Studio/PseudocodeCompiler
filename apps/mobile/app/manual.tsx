@@ -64,22 +64,21 @@ export default function GuidelinesScreen() {
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.label}>Cambridge 0478 Guide</Text>
-        <Text style={styles.title}>IGCSE Pseudocode Guidelines</Text>
+        <Text style={styles.label}>Pseudocode Compiler Guide</Text>
+        <Text style={styles.title}>Pseudocode Compiler Guidelines</Text>
         <Text style={styles.desc}>
-          Based on Cambridge IGCSE Computer Science (0478) syllabus 2026-2028
-          assessment details pages 35-49. This guide follows the official exam
-          syntax and includes the built-in routines available in the editor.
+          This guide focuses on practical pseudocode syntax and includes the
+          built-in routines available in the editor.
         </Text>
       </View>
 
       <View style={styles.note}>
         <Text style={styles.noteTitle}>Editor support</Text>
         <Text style={styles.noteText}>
-          Cambridge examples use the left-arrow assignment symbol. In this
-          editor you can type {"<-"} and it will become {"\u2190"}. Autocomplete
-          also supports DIV, MOD, LENGTH, LCASE,
-          UCASE, SUBSTRING, ROUND, and RANDOM with their exam-style syntax.
+          Classic pseudocode examples use the left-arrow assignment symbol. In
+          this editor you can type {"<-"} and it will become {"\u2190"}.
+          Autocomplete also supports DIV, MOD, LENGTH, LCASE, UCASE,
+          SUBSTRING, ROUND, and RANDOM.
         </Text>
       </View>
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { compilePseudocode } from "./index";
 
 describe("compilePseudocode", () => {
-  it("compiles valid IGCSE pseudocode into Python", () => {
+  it("compiles valid pseudocode into Python", () => {
     const source = `DECLARE Total : INTEGER
 DECLARE Index : INTEGER
 FOR Index <- 1 TO 3

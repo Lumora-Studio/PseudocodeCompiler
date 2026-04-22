@@ -1,0 +1,5 @@
+[     197ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/:0
+[     197ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/_vercel/insights/script.js:0
+[     203ms] [LOG] [Vercel Web Analytics] Failed to load script from /_vercel/insights/script.js. Be sure to enable Web Analytics for your project and deploy again. See https://vercel.com/docs/analytics/quickstart for more information. @ http://localhost:3000/_next/static/chunks/8250c79893fbb9b9.js:0
+[     203ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/_vercel/speed-insights/script.js:0
+[     204ms] [LOG] [Vercel Speed Insights] Failed to load script from /_vercel/speed-insights/script.js. Please check if any content blockers are enabled and try again. @ http://localhost:3000/_next/static/chunks/8250c79893fbb9b9.js:0

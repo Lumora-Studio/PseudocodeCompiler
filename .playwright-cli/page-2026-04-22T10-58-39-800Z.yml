@@ -1,0 +1,47 @@
+- generic [active] [ref=e1]:
+  - alert [ref=e2]
+  - main [ref=e3]:
+    - generic [ref=e4]:
+      - paragraph [ref=e6]: Pseudocode Compiler
+      - generic [ref=e7]:
+        - generic [ref=e8]: Signed Out
+        - button "Sign In" [ref=e9] [cursor=pointer]:
+          - generic [ref=e10]: Sign In
+        - button "Sign in to save workspace" [ref=e11] [cursor=pointer]:
+          - img [ref=e12]
+          - generic [ref=e16]: Sign In to Save
+        - button "Run" [disabled] [ref=e17] [cursor=pointer]:
+          - img [ref=e18]
+          - generic [ref=e20]: Run
+        - button "Manual" [ref=e21] [cursor=pointer]:
+          - img [ref=e22]
+        - button "Settings" [ref=e24] [cursor=pointer]:
+          - img [ref=e25]
+    - generic [ref=e29]:
+      - complementary [ref=e31]:
+        - generic [ref=e32]:
+          - generic [ref=e34]: Explorer
+          - generic [ref=e35]:
+            - button "Create File" [ref=e36] [cursor=pointer]:
+              - img [ref=e37]
+              - generic [ref=e38]: File
+            - button "Create Folder" [ref=e39] [cursor=pointer]:
+              - img [ref=e40]
+              - generic [ref=e42]: Folder
+        - generic [ref=e45]: V0.1.8
+      - generic [ref=e47]:
+        - generic [ref=e50]:
+          - navigation "Document path"
+        - generic [ref=e55]:
+          - paragraph [ref=e56]: START HERE
+          - heading "Create your first file." [level=2] [ref=e57]
+          - paragraph [ref=e58]: This workspace starts empty on purpose. Add a pseudocode file from the explorer, then write, compile, and run from there.
+          - generic [ref=e59]:
+            - button "Create First File" [ref=e60] [cursor=pointer]
+            - button "Create Folder" [ref=e61] [cursor=pointer]
+        - generic [ref=e63]:
+          - generic [ref=e64]:
+            - generic [ref=e65]: Terminal
+            - button "Close terminal" [ref=e66] [cursor=pointer]:
+              - img [ref=e67]
+          - generic [ref=e71]: Ready

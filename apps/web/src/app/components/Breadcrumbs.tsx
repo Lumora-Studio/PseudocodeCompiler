@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronRight } from "lucide-react";
-import type { WorkspaceNode } from "@igcse/workspace";
+import type { WorkspaceNode } from "@pseudocode-compiler/workspace";
 
 interface BreadcrumbsProps {
   path: WorkspaceNode[];
