@@ -312,7 +312,7 @@ export function tokenize(source: string): { tokens: Token[]; diagnostics: Diagno
       column,
       endLine: line,
       endColumn: column,
-      hint: "Remove the character or replace it with valid IGCSE pseudocode syntax.",
+      hint: "Remove the character or replace it with valid pseudocode syntax.",
     });
     advance();
   }

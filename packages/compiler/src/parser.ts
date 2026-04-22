@@ -404,7 +404,7 @@ class Parser {
       : "INTEGER";
 
     if (!BASIC_TYPES.has(returnTypeToken.keyword as BasicTypeName)) {
-      this.error(returnTypeToken, "SYN041", "Function return type must be a basic IGCSE data type.");
+      this.error(returnTypeToken, "SYN041", "Function return type must be a basic pseudocode data type.");
     }
 
     this.consumeNewlines();

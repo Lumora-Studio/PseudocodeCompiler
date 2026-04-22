@@ -34,7 +34,7 @@ console.error(
     "will reject that packaged DMG on macOS.",
     "",
     "Use one of these paths instead:",
-    "- Local testing: npm run pack --workspace=@igcse/web",
+    "- Local testing: npm run pack --workspace=@pseudocode-compiler/web",
     "- Signed distribution: install an Apple Developer ID certificate, then run dist again",
   ].join("\n"),
 );

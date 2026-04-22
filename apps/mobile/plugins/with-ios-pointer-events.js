@@ -7,8 +7,8 @@ const {
   removeContents,
 } = require("@expo/config-plugins/build/utils/generateCode");
 
-const IMPORT_TAG = "igcse-ios-pointer-events-import";
-const INIT_TAG = "igcse-ios-pointer-events-init";
+const IMPORT_TAG = "pseudocode-compiler-ios-pointer-events-import";
+const INIT_TAG = "pseudocode-compiler-ios-pointer-events-init";
 const HAS_REACT_IMPORT = /^\s*import React\s*$/m;
 const REACT_BOOTSTRAP = /^\s*let delegate = ReactNativeDelegate\(\)\s*$/m;
 

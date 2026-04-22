@@ -1,5 +1,15 @@
+"use client";
+
 import Link from "next/link";
 import CopyableCodeBlock from "./CopyableCodeBlock";
+
+type ManualGuideContentProps = {
+  action?: {
+    href: string;
+    label: string;
+  };
+  onClose?: () => void;
+};
 
 type Pattern = {
   title: string;
@@ -316,43 +326,49 @@ FOR I <- 1 TO N
 NEXT I
 OUTPUT Fact`;
 
-export default function ManualPage() {
+export function ManualGuideContent({ action, onClose }: ManualGuideContentProps) {
   return (
-    <main className="exam-shell min-h-screen p-4 md:p-6">
-      <div className="mx-auto max-w-6xl space-y-4">
-        <header className="panel rounded-xl p-4 md:p-6">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-[var(--accent)]">Cambridge 0478 Guide</p>
-              <h1 className="mt-1 text-2xl font-semibold text-[var(--text)] md:text-3xl">
-                Detailed IGCSE Pseudocode Guidelines
-              </h1>
-            </div>
-            <Link href="/" className="ui-button">
-              Back to Editor
+    <div className="mx-auto max-w-6xl space-y-4">
+      <header className="panel rounded-xl p-4 md:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-xs uppercase tracking-[0.2em] text-[var(--accent)]">
+              Pseudocode Compiler Guide
+            </p>
+            <h1 className="mt-1 text-2xl font-semibold text-[var(--text)] md:text-3xl">
+              Detailed Pseudocode Compiler Guidelines
+            </h1>
+          </div>
+          {onClose ? (
+            <button type="button" className="ui-button" onClick={onClose}>
+              Close manual
+            </button>
+          ) : action ? (
+            <Link href={action.href} className="ui-button">
+              {action.label}
             </Link>
-          </div>
-          <p className="mt-3 max-w-4xl text-sm text-[var(--muted)]">
-            These guidelines are based on Cambridge IGCSE Computer Science (0478) syllabus 2026-2028
-            pseudocode conventions from the assessment details section (pages 35-49). They focus on practical writing:
-            structuring logic, choosing correct control flow, and building exam-style solutions with clear,
-            readable pseudocode.
+          ) : null}
+        </div>
+        <p className="mt-3 max-w-4xl text-sm text-[var(--muted)]">
+          These guidelines focus on practical pseudocode writing: structuring logic, choosing correct
+          control flow, and building clear, readable solutions with the syntax supported in this
+          editor.
+        </p>
+        <div className="mt-4 rounded-md border border-[var(--panel-border)] bg-[var(--panel-bg)] p-3 text-sm">
+          <p className="font-semibold text-[var(--accent)]">Important notation note</p>
+          <p className="mt-1 text-[var(--muted)]">
+            Classic pseudocode examples often use a left-arrow assignment symbol. In this editor,
+            write assignment as <code>{"<-"}</code>.
           </p>
-          <div className="mt-4 rounded-md border border-[var(--panel-border)] bg-[var(--panel-bg)] p-3 text-sm">
-            <p className="font-semibold text-[var(--accent)]">Important notation note</p>
-            <p className="mt-1 text-[var(--muted)]">
-              Official Cambridge examples use a left-arrow assignment symbol. In this compiler/editor, write
-              assignment as <code>{"<-"}</code>.
-            </p>
-          </div>
-          <div className="mt-3 rounded-md border border-[var(--panel-border)] bg-[var(--panel-bg)] p-3 text-sm">
-            <p className="font-semibold text-[var(--accent)]">Editor support</p>
-            <p className="mt-1 text-[var(--muted)]">
-              The editor autocomplete includes DIV, MOD, LENGTH, LCASE, UCASE, SUBSTRING, ROUND, and RANDOM,
-              so the exam-style routine syntax is available while you type.
-            </p>
-          </div>
-        </header>
+        </div>
+        <div className="mt-3 rounded-md border border-[var(--panel-border)] bg-[var(--panel-bg)] p-3 text-sm">
+          <p className="font-semibold text-[var(--accent)]">Editor support</p>
+          <p className="mt-1 text-[var(--muted)]">
+            The editor autocomplete includes DIV, MOD, LENGTH, LCASE, UCASE, SUBSTRING, ROUND, and
+            RANDOM, so the built-in routine syntax is available while you type.
+          </p>
+        </div>
+      </header>
 
         <section className="panel rounded-xl p-4 md:p-6">
           <h2 className="text-lg font-semibold">Quick Navigation</h2>
@@ -657,7 +673,23 @@ export default function ManualPage() {
             <li>Dry-run tested with normal and edge-case inputs.</li>
           </ul>
         </section>
-      </div>
+    </div>
+  );
+}
+
+export default function ManualPage() {
+  const manualScrollStyle = {
+    minHeight: "100dvh",
+    WebkitOverflowScrolling: "touch",
+    touchAction: "pan-y",
+  } as const;
+
+  return (
+    <main
+      className="exam-shell min-h-screen overflow-y-auto overscroll-contain p-4 md:p-6"
+      style={manualScrollStyle}
+    >
+      <ManualGuideContent action={{ href: "/", label: "Back to Pseudocode Compiler" }} />
     </main>
   );
 }

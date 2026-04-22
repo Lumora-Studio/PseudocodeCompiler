@@ -60,7 +60,7 @@ export interface ThemeColors {
   selected: string;
 }
 
-const STORAGE_KEY = "igcse-theme-mode";
+const STORAGE_KEY = "pseudocode-compiler-theme-mode";
 
 const monoFamily = Platform.select({
   ios: "Menlo",

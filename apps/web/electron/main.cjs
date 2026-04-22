@@ -3,10 +3,12 @@ const http = require("http");
 const path = require("path");
 const fs = require("fs");
 const serveHandler = require("serve-handler");
+const fsp = fs.promises;
 
 const isDev = !app.isPackaged;
 const shouldOpenDevTools = process.env.ELECTRON_OPEN_DEVTOOLS === "1";
 const devToolsMode = process.env.ELECTRON_DEVTOOLS_MODE || "detach";
+const preferredStaticPort = Number(process.env.PSEUDOCODE_COMPILER_STATIC_PORT || "32123");
 let staticServer;
 let staticPort;
 let nextSaveRequestId = 1;
@@ -14,6 +16,43 @@ let nextSaveRequestId = 1;
 const rendererSaveState = new Map();
 const pendingSaveRequests = new Map();
 const allowCloseWindows = new WeakSet();
+
+function sanitizeStorageKey(storageKey) {
+  if (typeof storageKey !== "string" || storageKey.trim().length === 0) {
+    return "local-device";
+  }
+
+  return storageKey.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+function getDesktopPersistenceDirectory(storageKey) {
+  return path.join(app.getPath("userData"), "local-workspace", sanitizeStorageKey(storageKey));
+}
+
+function getDesktopWorkspaceFilePath(storageKey) {
+  return path.join(getDesktopPersistenceDirectory(storageKey), "workspace.json");
+}
+
+function getDesktopSettingsFilePath(storageKey) {
+  return path.join(getDesktopPersistenceDirectory(storageKey), "settings.json");
+}
+
+async function readDesktopPersistence(filePath) {
+  try {
+    const raw = await fsp.readFile(filePath, "utf8");
+    return JSON.parse(raw);
+  } catch (error) {
+    if (error && typeof error === "object" && error.code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function writeDesktopPersistence(filePath, value) {
+  await fsp.mkdir(path.dirname(filePath), { recursive: true });
+  await fsp.writeFile(filePath, JSON.stringify(value, null, 2), "utf8");
+}
 
 function completePendingSaveRequest(requestId, success) {
   const pending = pendingSaveRequests.get(requestId);
@@ -146,7 +185,7 @@ async function startStaticServer() {
 
   await new Promise((resolve, reject) => {
     staticServer.once("error", reject);
-    staticServer.listen(0, "127.0.0.1", () => {
+    staticServer.listen(preferredStaticPort, "127.0.0.1", () => {
       const address = staticServer.address();
       if (!address || typeof address === "string") {
         reject(new Error("Unable to start static server."));
@@ -184,6 +223,7 @@ async function createWindow() {
       nodeIntegration: false,
     },
   });
+  const webContentsId = win.webContents.id;
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
@@ -208,10 +248,10 @@ async function createWindow() {
   });
 
   win.on("closed", () => {
-    rendererSaveState.delete(win.webContents.id);
+    rendererSaveState.delete(webContentsId);
 
     for (const [requestId, pending] of pendingSaveRequests.entries()) {
-      if (pending.webContentsId === win.webContents.id) {
+      if (pending.webContentsId === webContentsId) {
         completePendingSaveRequest(requestId, false);
       }
     }
@@ -253,9 +293,7 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
+  app.quit();
 });
 
 app.on("before-quit", () => {
@@ -278,4 +316,26 @@ ipcMain.on("app:save-response", (event, payload) => {
   }
 
   completePendingSaveRequest(requestId, payload?.success);
+});
+
+ipcMain.handle("app:load-local-workspace", async (_event, payload) => {
+  return readDesktopPersistence(getDesktopWorkspaceFilePath(payload?.storageKey));
+});
+
+ipcMain.handle("app:save-local-workspace", async (_event, payload) => {
+  await writeDesktopPersistence(
+    getDesktopWorkspaceFilePath(payload?.storageKey),
+    payload?.workspace ?? null,
+  );
+});
+
+ipcMain.handle("app:load-local-workspace-settings", async (_event, payload) => {
+  return readDesktopPersistence(getDesktopSettingsFilePath(payload?.storageKey));
+});
+
+ipcMain.handle("app:save-local-workspace-settings", async (_event, payload) => {
+  await writeDesktopPersistence(
+    getDesktopSettingsFilePath(payload?.storageKey),
+    payload?.settings ?? null,
+  );
 });

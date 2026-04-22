@@ -1,6 +1,6 @@
 import { RefObject } from "react";
 import type WebView from "react-native-webview";
-import type { RunRequest, RunResult } from "@igcse/compiler/types";
+import type { RunRequest, RunResult } from "@pseudocode-compiler/compiler/types";
 
 interface PendingRequest {
   resolve: (result: RunResult) => void;

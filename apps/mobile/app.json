@@ -1,12 +1,12 @@
 {
   "expo": {
-    "name": "IGCSE Pseudocode Compiler",
-    "slug": "igcse-pseudocode-compiler",
+    "name": "Pseudocode Compiler",
+    "slug": "pseudocode-compiler",
     "version": "0.1.8",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "scheme": "igcse-compiler",
+    "scheme": "pseudocode-compiler",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -16,7 +16,7 @@
       "icon": "./assets/ios-app-icon.icon",
       "supportsTablet": true,
       "requireFullScreen": true,
-      "bundleIdentifier": "com.alex.igcsepseudocodecompiler",
+      "bundleIdentifier": "com.alex.pseudocodecompiler",
       "buildNumber": "1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false

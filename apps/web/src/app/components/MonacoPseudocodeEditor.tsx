@@ -163,8 +163,8 @@ export function MonacoPseudocodeEditor({
 
     if (!pseudocodeLanguageRegistered) {
       pseudocodeLanguageRegistered = true;
-      monaco.languages.register({ id: "igcse-pseudocode" });
-      monaco.languages.setMonarchTokensProvider("igcse-pseudocode", {
+      monaco.languages.register({ id: "pseudocode" });
+      monaco.languages.setMonarchTokensProvider("pseudocode", {
         tokenizer: {
           root: [
             [/\/\/.*$/, "comment"],
@@ -182,7 +182,7 @@ export function MonacoPseudocodeEditor({
           ],
         },
       });
-      monaco.languages.setLanguageConfiguration("igcse-pseudocode", {
+      monaco.languages.setLanguageConfiguration("pseudocode", {
         brackets: [
           ["(", ")"],
           ["[", "]"],
@@ -204,7 +204,7 @@ export function MonacoPseudocodeEditor({
 
     if (!pseudocodeCompletionProviderRegistered) {
       pseudocodeCompletionProviderRegistered = true;
-      monaco.languages.registerCompletionItemProvider("igcse-pseudocode", {
+      monaco.languages.registerCompletionItemProvider("pseudocode", {
         provideCompletionItems(model: Monaco.editor.ITextModel, position: Monaco.Position) {
           const word = model.getWordUntilPosition(position);
           const range = {
@@ -282,7 +282,7 @@ export function MonacoPseudocodeEditor({
 
     const model = editor.getModel();
     if (model) {
-      monaco.editor.setModelLanguage(model, "igcse-pseudocode");
+      monaco.editor.setModelLanguage(model, "pseudocode");
     }
 
     const insertQuotePair = (quote: "\"" | "'") => {
@@ -521,7 +521,7 @@ export function MonacoPseudocodeEditor({
     if (!model) {
       return;
     }
-    monacoRef.current.editor.setModelMarkers(model, "igcse-compiler", markers);
+    monacoRef.current.editor.setModelMarkers(model, "pseudocode", markers);
   }, [markers]);
 
   useEffect(() => {
@@ -536,7 +536,7 @@ export function MonacoPseudocodeEditor({
     <Editor
       key={documentKey}
       height="100%"
-      defaultLanguage="igcse-pseudocode"
+      defaultLanguage="pseudocode"
       value={value}
       onChange={(nextValue) => onChange(nextValue ?? "")}
       onMount={handleMount}

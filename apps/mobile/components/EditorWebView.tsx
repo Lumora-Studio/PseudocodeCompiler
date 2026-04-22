@@ -8,7 +8,7 @@ import {
   View,
 } from "react-native";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
-import type { Diagnostic } from "@igcse/compiler/types";
+import type { Diagnostic } from "@pseudocode-compiler/compiler/types";
 import {
   createThemedStyleSheet,
   fonts,

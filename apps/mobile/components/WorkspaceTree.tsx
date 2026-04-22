@@ -20,7 +20,7 @@ import {
   getChildNodes,
   type WorkspaceNode,
   type WorkspaceState,
-} from "@igcse/workspace";
+} from "@pseudocode-compiler/workspace";
 import {
   createThemedStyleSheet,
   fonts,

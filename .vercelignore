@@ -1,0 +1,22 @@
+.git
+.next
+node_modules
+coverage
+dist
+out
+build
+*.dmg
+*.blockmap
+*.tsbuildinfo
+.DS_Store
+.env
+.env.*
+.vercel
+UI.pen
+apps/mobile
+apps/web/.next
+apps/web/dist
+apps/web/out
+apps/web/electron
+Pseudocode Compiler Icon Exports
+Pseudocode Icon Exports

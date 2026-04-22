@@ -1,12 +1,12 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { WorkspaceState } from "@igcse/workspace";
+import type { WorkspaceState } from "@pseudocode-compiler/workspace";
 import {
   createEmptyWorkspace,
   migratePersistedWorkspace,
-} from "@igcse/workspace";
+} from "@pseudocode-compiler/workspace";
 
-const STORAGE_KEY = "igcse-workspace-v3";
-const LEGACY_SOURCE_KEY = "igcse-editor-source-v2";
+const STORAGE_KEY = "pseudocode-compiler-workspace-v3";
+const LEGACY_SOURCE_KEY = "pseudocode-compiler-editor-source-v2";
 
 export async function loadWorkspace(sampleSource: string): Promise<WorkspaceState> {
   try {

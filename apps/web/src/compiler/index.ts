@@ -1,1 +1,1 @@
-export { compilePseudocode } from "@igcse/compiler";
+export { compilePseudocode } from "@pseudocode-compiler/compiler";
