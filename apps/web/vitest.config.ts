@@ -14,6 +14,9 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),
+      "@igcse/compiler": path.resolve(__dirname, "../../packages/compiler/src/index.ts"),
+      "@igcse/compiler/types": path.resolve(__dirname, "../../packages/compiler/src/types.ts"),
+      "@igcse/workspace": path.resolve(__dirname, "../../packages/workspace/src/index.ts"),
     },
   },
 });

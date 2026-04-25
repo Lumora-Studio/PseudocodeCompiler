@@ -1,0 +1,95 @@
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - generic [ref=e5]:
+      - link "Lumora Studio Lumora Studio" [ref=e6] [cursor=pointer]:
+        - /url: /
+        - img "Lumora Studio" [ref=e8]
+        - generic [ref=e9]: Lumora Studio
+      - generic [ref=e10]:
+        - link "Home" [ref=e11] [cursor=pointer]:
+          - /url: /
+        - link "Products" [ref=e12] [cursor=pointer]:
+          - /url: /products
+        - link "About" [ref=e13] [cursor=pointer]:
+          - /url: /about
+        - link "Blog" [ref=e14] [cursor=pointer]:
+          - /url: /blog
+  - generic [ref=e17]:
+    - generic [ref=e18]: We
+    - generic: build
+    - generic: software
+    - generic: that
+    - generic: feels
+    - generic: right.
+  - generic [ref=e21]:
+    - paragraph [ref=e23]: Our Products
+    - link "Schedora X Beta A unified calendar and reminders experience for Apple platforms. Seamlessly manage your schedule across iPhone, iPad, and Mac. iOS iPadOS macOS watchOS Soon Learn more Schedora X" [ref=e25] [cursor=pointer]:
+      - /url: /products/schedorax
+      - generic [ref=e26]:
+        - generic [ref=e27]:
+          - generic [ref=e28]:
+            - heading "Schedora X" [level=3] [ref=e29]
+            - generic [ref=e30]: Beta
+          - paragraph [ref=e31]: A unified calendar and reminders experience for Apple platforms. Seamlessly manage your schedule across iPhone, iPad, and Mac.
+          - generic [ref=e32]:
+            - generic [ref=e33]: iOS
+            - generic [ref=e34]: iPadOS
+            - generic [ref=e35]: macOS
+            - generic [ref=e36]:
+              - text: watchOS
+              - generic [ref=e37]: Soon
+          - generic [ref=e39]:
+            - text: Learn more
+            - img [ref=e40]
+        - img "Schedora X" [ref=e47]
+    - link "Pseudocode Compiler Pseudocode An educational toolchain that compiles pseudocode into Python. Built for students, designed for clarity. Web iOS iPadOS macOS Learn more" [ref=e50] [cursor=pointer]:
+      - /url: /products/pseudocode
+      - generic [ref=e51]:
+        - img "Pseudocode Compiler" [ref=e61]
+        - generic [ref=e64]:
+          - heading "Pseudocode" [level=3] [ref=e65]
+          - paragraph [ref=e66]: An educational toolchain that compiles pseudocode into Python. Built for students, designed for clarity.
+          - generic [ref=e67]:
+            - generic [ref=e68]: Web
+            - generic [ref=e69]: iOS
+            - generic [ref=e70]: iPadOS
+            - generic [ref=e71]: macOS
+          - generic [ref=e73]:
+            - text: Learn more
+            - img [ref=e74]
+  - generic [ref=e78]:
+    - generic [ref=e79]: PHILOSOPHY
+    - blockquote [ref=e80]: "\"Code is poetry. Design is rhythm.\""
+  - contentinfo [ref=e82]:
+    - generic [ref=e83]:
+      - generic [ref=e84]:
+        - generic [ref=e85]:
+          - generic [ref=e86]:
+            - img "Lumora Studio" [ref=e87]
+            - generic [ref=e88]: Lumora Studio
+          - paragraph [ref=e89]: We build software that feels right. Tools designed with intention, crafted with care.
+        - generic [ref=e90]:
+          - heading "Products" [level=4] [ref=e91]
+          - list [ref=e92]:
+            - listitem [ref=e93]:
+              - link "Schedora X" [ref=e94] [cursor=pointer]:
+                - /url: /products/schedorax
+            - listitem [ref=e95]:
+              - link "Pseudocode Compiler" [ref=e96] [cursor=pointer]:
+                - /url: /products/pseudocode
+        - generic [ref=e97]:
+          - heading "Company" [level=4] [ref=e98]
+          - list [ref=e99]:
+            - listitem [ref=e100]:
+              - link "About" [ref=e101] [cursor=pointer]:
+                - /url: /about
+            - listitem [ref=e102]:
+              - link "Blog" [ref=e103] [cursor=pointer]:
+                - /url: /blog
+      - generic [ref=e104]:
+        - paragraph [ref=e105]: © 2026 Lumora Studio. All rights reserved.
+        - generic [ref=e106]:
+          - link "Privacy" [ref=e107] [cursor=pointer]:
+            - /url: /privacy
+          - link "Terms" [ref=e108] [cursor=pointer]:
+            - /url: /terms

@@ -1371,7 +1371,7 @@ const useStyles = createThemedStyleSheet(({ colors, isDark }) => ({
   headerButton: {
     width: 22,
     height: 22,
-    borderRadius: 11,
+    borderRadius: radii.row,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1394,7 +1394,7 @@ const useStyles = createThemedStyleSheet(({ colors, isDark }) => ({
     overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
-    borderRadius: 12,
+    borderRadius: radii.section,
     backgroundColor: colors.panel,
     shadowColor: colors.shadow,
     shadowOpacity: isDark ? 0.22 : 0.14,

@@ -1,6 +1,7 @@
 import { openDB } from "idb";
 import type { WorkspaceState } from "@igcse/workspace";
 import { createEmptyWorkspace, migratePersistedWorkspace } from "@igcse/workspace";
+import type { WorkspacePersistenceMode } from "@/lib/platform";
 
 const DB_NAME = "igcse-pseudocode-workspace";
 const STORE_NAME = "workspace";
@@ -9,6 +10,15 @@ const LEGACY_WORKSPACE_KEY = "igcse-pseudocode-workspace-v1";
 const LEGACY_SOURCE_KEY = "igcse-editor-source-v2";
 const RESET_WORKSPACE_ON_LOAD = process.env.NEXT_PUBLIC_RESET_WORKSPACE_ON_DEV === "1";
 const DEV_RESET_SESSION_KEY = "igcse-reset-workspace-on-dev-applied";
+
+interface WorkspaceStorageOptions {
+  mode?: WorkspacePersistenceMode;
+  syncToCloud?: boolean;
+}
+
+interface CloudWorkspaceResponse {
+  workspace: unknown | null;
+}
 
 function shouldResetWorkspaceForDevSession(): boolean {
   if (!RESET_WORKSPACE_ON_LOAD || typeof window === "undefined") {
@@ -37,13 +47,44 @@ async function getDatabase() {
   });
 }
 
-export async function loadWorkspace(sampleSource: string): Promise<WorkspaceState> {
+export async function loadWorkspace(
+  sampleSource: string,
+  options: WorkspaceStorageOptions = {},
+): Promise<WorkspaceState> {
+  const mode = options.mode ?? (options.syncToCloud ? "cloud" : "local");
+
+  if (mode === "memory") {
+    return createEmptyWorkspace();
+  }
+
+  if (mode === "cloud") {
+    const cloudWorkspace = await loadWorkspaceFromCloud(sampleSource);
+    if (cloudWorkspace) {
+      return cloudWorkspace;
+    }
+  }
+
   return migrateWorkspace(sampleSource);
 }
 
-export async function saveWorkspace(state: WorkspaceState): Promise<void> {
+export async function saveWorkspace(
+  state: WorkspaceState,
+  options: WorkspaceStorageOptions = {},
+): Promise<void> {
+  const mode = options.mode ?? (options.syncToCloud ? "cloud" : "local");
+
+  if (mode === "memory") {
+    return;
+  }
+
   const database = await getDatabase();
   await database.put(STORE_NAME, state, PRIMARY_KEY);
+
+  if (mode === "cloud") {
+    void saveWorkspaceToCloud(state).catch(() => {
+      /* Browser storage is the primary save target; cloud sync is best-effort. */
+    });
+  }
 }
 
 export async function migrateWorkspace(sampleSource: string): Promise<WorkspaceState> {
@@ -87,4 +128,51 @@ export async function migrateWorkspace(sampleSource: string): Promise<WorkspaceS
   }
 
   return state;
+}
+
+async function loadWorkspaceFromCloud(sampleSource: string): Promise<WorkspaceState | null> {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const response = await fetch("/api/workspace", {
+      method: "GET",
+      credentials: "same-origin",
+      headers: {
+        Accept: "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = (await response.json()) as CloudWorkspaceResponse;
+    if (!data.workspace) {
+      return null;
+    }
+
+    const state = migratePersistedWorkspace(data.workspace, { sampleSource });
+    const database = await getDatabase();
+    await database.put(STORE_NAME, state, PRIMARY_KEY);
+    return state;
+  } catch {
+    return null;
+  }
+}
+
+async function saveWorkspaceToCloud(state: WorkspaceState): Promise<void> {
+  const response = await fetch("/api/workspace", {
+    method: "PUT",
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ workspace: state }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Unable to save workspace to Convex.");
+  }
 }

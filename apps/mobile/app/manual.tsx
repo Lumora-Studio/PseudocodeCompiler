@@ -2,6 +2,7 @@ import { ScrollView, StyleSheet, Text, View } from "react-native";
 import {
   createThemedStyleSheet,
   fonts,
+  radii,
   useThemedStyles,
 } from "../lib/theme";
 
@@ -65,7 +66,7 @@ export default function GuidelinesScreen() {
     <ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
       <View style={styles.header}>
         <Text style={styles.label}>Cambridge 0478 Guide</Text>
-        <Text style={styles.title}>IGCSE Pseudocode Guidelines</Text>
+        <Text style={styles.title}>Pseudocode Guidelines</Text>
         <Text style={styles.desc}>
           Based on Cambridge IGCSE Computer Science (0478) syllabus 2026-2028
           assessment details pages 35-49. This guide follows the official exam
@@ -335,7 +336,7 @@ const useStyles = createThemedStyleSheet(({ colors }) => ({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.panel,
-    borderRadius: 12,
+    borderRadius: radii.section,
     padding: 14,
     marginBottom: 12,
   },
@@ -354,7 +355,7 @@ const useStyles = createThemedStyleSheet(({ colors }) => ({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.panel,
-    borderRadius: 12,
+    borderRadius: radii.section,
     padding: 16,
     marginBottom: 12,
   },
@@ -384,7 +385,7 @@ const useStyles = createThemedStyleSheet(({ colors }) => ({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.background,
-    borderRadius: 8,
+    borderRadius: radii.row,
     padding: 12,
     marginTop: 10,
   },

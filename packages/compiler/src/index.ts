@@ -3,6 +3,8 @@ import { generatePythonCode } from "./codegen";
 import { parseSource } from "./parser";
 import { CompileRequest, CompileResult } from "./types";
 
+export { parseSource } from "./parser";
+
 export function compilePseudocode(request: CompileRequest): CompileResult {
   const { ast, diagnostics: parseDiagnostics } = parseSource(request.source);
   const semanticResult = analyzeProgram(ast);

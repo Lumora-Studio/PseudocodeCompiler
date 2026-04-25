@@ -1,6 +1,6 @@
-# IGCSE Pseudocode Compiler
+# Pseudocode Compiler
 
-Monorepo for an IGCSE-style pseudocode toolchain and editor suite. The project includes:
+Monorepo for a strict pseudocode toolchain and editor suite. The project includes:
 
 - a shared compiler package that tokenizes, parses, validates, and transpiles pseudocode to Python
 - a Next.js app that serves as the main browser UI and the desktop shell source for Electron
@@ -9,7 +9,7 @@ Monorepo for an IGCSE-style pseudocode toolchain and editor suite. The project i
 
 ## What It Does
 
-- Compiles IGCSE pseudocode into Python
+- Compiles pseudocode into Python
 - Produces syntax and semantic diagnostics with source locations
 - Runs generated Python inside an in-browser / in-app Python runtime
 - Persists a small multi-file workspace with folders, documents, and virtual files
@@ -65,6 +65,13 @@ npm run dev:web
 ```
 
 Open the web app at [http://localhost:3000](http://localhost:3000).
+
+If you want the Electron shell without keeping the app attached to the launch terminal, start the web server first and then open the desktop window separately:
+
+```bash
+npm run dev:web
+npm run open:desktop
+```
 
 ## Root Commands
 

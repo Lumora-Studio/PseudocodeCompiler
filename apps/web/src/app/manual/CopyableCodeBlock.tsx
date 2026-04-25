@@ -68,23 +68,23 @@ export default function CopyableCodeBlock({
   const buttonLabel = copyState === "copied" ? "Copied" : "Copy";
 
   return (
-    <div className={`rounded-md border border-[var(--panel-border)] bg-[var(--panel-bg)] ${className}`.trim()}>
-      <div className="flex items-center justify-between gap-3 border-b border-[var(--panel-border)] px-3 py-2">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--accent)]">
+    <div className={`manual-code-block ${className}`.trim()}>
+      <div className="flex items-center justify-between gap-3 border-b border-[var(--separator)]/60 px-4 py-2.5">
+        <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--accent)]">
           Pseudocode
         </span>
         <button
           type="button"
           onClick={handleCopy}
-          className="ui-button px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em]"
+          className="manual-nav-pill !px-3 !py-1 !text-[11px]"
           aria-label={copyState === "copied" ? "Code copied to clipboard" : "Copy code to clipboard"}
         >
           {buttonLabel}
         </button>
       </div>
-      <pre className="overflow-x-auto p-3 text-xs">{code}</pre>
+      <pre className="overflow-x-auto p-4 text-xs leading-relaxed">{code}</pre>
       {copyState === "error" ? (
-        <p className="px-3 pb-3 text-[11px] text-[var(--danger)]">Clipboard access is unavailable here.</p>
+        <p className="px-4 pb-3 text-[11px] text-[var(--red)]">Clipboard access is unavailable here.</p>
       ) : null}
     </div>
   );

@@ -1,14 +1,15 @@
 {
   "name": "@igcse/web",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "private": true,
-  "description": "Next.js + Electron web/desktop app for IGCSE pseudocode compiler.",
+  "description": "Next.js + Electron web/desktop app for Pseudocode Compiler.",
   "author": "Alex",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "concurrently -k \"npm:dev:web\" \"npm:dev:electron\"",
     "dev:web": "cross-env NEXT_PUBLIC_RESET_WORKSPACE_ON_DEV=1 next dev",
     "dev:electron": "wait-on tcp:3000 && cross-env ELECTRON_START_URL=http://localhost:3000 NEXT_PUBLIC_RESET_WORKSPACE_ON_DEV=1 electron .",
+    "open:electron": "wait-on tcp:3000 && node ./scripts/open-electron.cjs",
     "dev:electron:devtools": "wait-on tcp:3000 && cross-env ELECTRON_START_URL=http://localhost:3000 ELECTRON_OPEN_DEVTOOLS=1 NEXT_PUBLIC_RESET_WORKSPACE_ON_DEV=1 electron .",
     "build": "next build",
     "build:electron-web": "cross-env BUILD_TARGET=electron next build",
@@ -25,6 +26,10 @@
     "@igcse/compiler": "*",
     "@igcse/workspace": "*",
     "@monaco-editor/react": "^4.7.0",
+    "@vercel/speed-insights": "^2.0.0",
+    "@workos-inc/authkit-nextjs": "^4.0.1",
+    "@xyflow/react": "^12.10.2",
+    "convex": "^1.36.1",
     "idb": "^8.0.3",
     "lucide-react": "^0.577.0",
     "monaco-editor": "^0.55.1",
@@ -61,7 +66,7 @@
   },
   "build": {
     "appId": "com.alex.igcsepseudocodecompiler",
-    "productName": "IGCSE Pseudocode Compiler",
+    "productName": "Pseudocode Compiler",
     "electronVersion": "37.10.3",
     "electronDist": "../../node_modules/electron/dist",
     "files": [

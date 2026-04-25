@@ -1,8 +1,8 @@
 {
   "name": "@igcse/compiler",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "private": true,
-  "description": "IGCSE pseudocode compiler core — tokenizer, parser, semantics, and Python code generation.",
+  "description": "Pseudocode compiler core — tokenizer, parser, semantics, and Python code generation.",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {

@@ -1,0 +1,126 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e5]: Pseudocode
+      - paragraph [ref=e6]: Pseudocode Compiler
+      - generic [ref=e7]:
+        - button "Save workspace" [disabled] [ref=e8] [cursor=pointer]:
+          - img [ref=e9]
+        - button "Manual" [ref=e13] [cursor=pointer]:
+          - img [ref=e14]
+        - button "Switch to flowchart view" [ref=e16] [cursor=pointer]:
+          - img [ref=e17]
+        - button "Settings" [ref=e21] [cursor=pointer]:
+          - img [ref=e22]
+        - button "Run" [disabled] [ref=e25] [cursor=pointer]:
+          - img [ref=e26]
+        - link "Sign in" [ref=e28] [cursor=pointer]:
+          - /url: /login
+          - img [ref=e29]
+          - generic [ref=e32]: Sign in
+    - generic [ref=e34]:
+      - complementary [ref=e36]:
+        - generic [ref=e37]:
+          - generic [ref=e39]: Explorer
+          - generic [ref=e40]:
+            - button "Create File" [ref=e41] [cursor=pointer]:
+              - img [ref=e42]
+              - generic [ref=e43]: File
+            - button "Create Folder" [ref=e44] [cursor=pointer]:
+              - img [ref=e45]
+              - generic [ref=e47]: Folder
+        - generic [ref=e50]: alpha - version 0.1.9
+      - generic [ref=e52]:
+        - generic [ref=e53]:
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - heading [level=3]: Blocks
+                    - paragraph: Drag onto the flow
+                - generic:
+                  - generic:
+                    - generic:
+                      - paragraph: Start
+                      - paragraph: Program entry point
+                  - generic:
+                    - generic:
+                      - img
+                    - generic:
+                      - paragraph: Input
+                      - paragraph: Read a value into a variable
+                  - generic:
+                    - generic:
+                      - paragraph: Process
+                      - paragraph: Add editable lines inside the block
+                  - generic:
+                    - generic:
+                      - img
+                    - generic:
+                      - paragraph: Decision
+                      - paragraph: Branch the flow with a condition
+                  - generic:
+                    - generic:
+                      - img
+                    - generic:
+                      - paragraph: Output
+                      - paragraph: Show a value or message
+                  - generic:
+                    - generic:
+                      - paragraph: End
+                      - paragraph: Program exit point
+                - generic:
+                  - button:
+                    - img
+                    - text: Generate Code
+                  - button:
+                    - img
+                    - text: Clear Canvas
+              - button:
+                - img
+              - generic:
+                - application:
+                  - img
+                  - generic:
+                    - button:
+                      - img
+                    - button:
+                      - img
+                    - button:
+                      - img
+                    - button:
+                      - img
+                  - generic:
+                    - img
+                  - generic:
+                    - link:
+                      - /url: https://reactflow.dev
+                      - text: React Flow
+              - complementary:
+                - generic:
+                  - heading [level=3]: Inspector
+                  - paragraph: Select a block to configure input, output, or the lines inside a process.
+                - generic:
+                  - generic:
+                    - generic:
+                      - paragraph: Build it like blocks.
+                      - paragraph: Drop an Input or Output block, select it, then set the text it should read or show.
+                      - paragraph: For Process blocks, add one or more lines inside the block. That gives you a basic visual flow without adding separate built-in functions yet.
+          - generic [ref=e54]:
+            - generic [ref=e57]:
+              - navigation "Document path"
+            - generic [ref=e62]:
+              - paragraph [ref=e63]: START HERE
+              - heading "Create your first file." [level=2] [ref=e64]
+              - paragraph [ref=e65]: This workspace starts empty on purpose. Add a pseudocode file from the explorer, then write, compile, and run from there.
+              - generic [ref=e66]:
+                - button "Create First File" [ref=e67] [cursor=pointer]
+                - button "Create Folder" [ref=e68] [cursor=pointer]
+        - generic [ref=e70]:
+          - generic [ref=e71]:
+            - generic [ref=e72]: Terminal
+            - button "Close terminal" [ref=e73] [cursor=pointer]:
+              - img [ref=e74]
+          - generic [ref=e78]: Ready
+  - alert [ref=e79]

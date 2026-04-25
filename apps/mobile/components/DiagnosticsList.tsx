@@ -4,6 +4,7 @@ import type { Diagnostic } from "@igcse/compiler/types";
 import {
   createThemedStyleSheet,
   fonts,
+  radii,
   useAppTheme,
   useThemedStyles,
 } from "../lib/theme";
@@ -172,7 +173,7 @@ const useStyles = createThemedStyleSheet(({ colors, isDark }) => ({
     height: 24,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 8,
+    borderRadius: radii.row,
     backgroundColor: "rgba(48, 209, 88, 0.12)",
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(48, 209, 88, 0.22)",
@@ -214,7 +215,7 @@ const useStyles = createThemedStyleSheet(({ colors, isDark }) => ({
     minWidth: 24,
     height: 24,
     paddingHorizontal: 8,
-    borderRadius: 12,
+    borderRadius: radii.row,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.surface2,
@@ -243,7 +244,7 @@ const useStyles = createThemedStyleSheet(({ colors, isDark }) => ({
   },
   item: {
     padding: 12,
-    borderRadius: 12,
+    borderRadius: radii.row,
     backgroundColor: colors.surface2,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.separator,
@@ -261,7 +262,7 @@ const useStyles = createThemedStyleSheet(({ colors, isDark }) => ({
     alignItems: "center",
     gap: 6,
     paddingHorizontal: 8,
-    borderRadius: 11,
+    borderRadius: radii.row,
     borderWidth: StyleSheet.hairlineWidth,
   },
   badgeError: {

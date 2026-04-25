@@ -90,6 +90,17 @@ describe("workspace storage", () => {
     expect(getActiveDocument(reloaded)?.source).toBe('OUTPUT "Saved"');
   });
 
+  it("keeps memory-mode workspaces out of local storage", async () => {
+    const storage = await import("@/lib/storage");
+    const loaded = await storage.loadWorkspace('OUTPUT "Hello"', { mode: "memory" });
+    const created = createDocument(loaded, { name: "main", source: 'OUTPUT "Transient"' });
+
+    await storage.saveWorkspace(created, { mode: "memory" });
+    const reloaded = await storage.loadWorkspace('OUTPUT "Fallback"');
+
+    expect(getActiveDocument(reloaded)).toBeNull();
+  });
+
   it("falls back to the default workspace when persisted data is malformed", async () => {
     dbStore.set("current", { version: 999 });
     const storage = await import("@/lib/storage");

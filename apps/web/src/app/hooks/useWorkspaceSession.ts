@@ -35,15 +35,24 @@ import {
 import { compilePseudocode } from "@/compiler";
 import type { Diagnostic } from "@/compiler/types";
 import { loadWorkspace, saveWorkspace } from "@/lib/storage";
+import type { WorkspacePersistenceMode } from "@/lib/platform";
 import { pythonRunner } from "@/runtime/executePython";
 
 const INPUT_REQUEST_ERROR_TEXT = "INPUT requested but no stdin lines remain";
 const MAX_INTERACTIVE_INPUTS = 200;
 const TERMINAL_PROMPT = ">";
+const DEFAULT_AUTO_SAVE_DELAY_MS = 5 * 60 * 1000;
 
 export interface AppNotice {
   tone: "error" | "info";
   message: string;
+}
+
+interface WorkspaceSessionOptions {
+  autoSaveDelayMs?: number;
+  cloudSyncEnabled?: boolean;
+  cloudSyncLoading?: boolean;
+  persistenceMode?: WorkspacePersistenceMode;
 }
 
 interface PendingTerminalInput {
@@ -79,7 +88,11 @@ function summarizeDiagnostics(diagnostics: Diagnostic[]): CompileSummary {
   };
 }
 
-export function useWorkspaceSession(defaultSource: string) {
+export function useWorkspaceSession(defaultSource: string, options: WorkspaceSessionOptions = {}) {
+  const persistenceMode =
+    options.persistenceMode ?? (options.cloudSyncEnabled ? "cloud" : "local");
+  const cloudSyncLoading = options.cloudSyncLoading ?? false;
+  const autoSaveDelayMs = Math.max(1000, options.autoSaveDelayMs ?? DEFAULT_AUTO_SAVE_DELAY_MS);
   const [workspace, setWorkspace] = useState<WorkspaceState | null>(null);
   const [compileDiagnostics, setCompileDiagnostics] = useState<Diagnostic[]>([]);
   const [terminalOutputs, setTerminalOutputs] = useState<Record<string, string>>({});
@@ -91,22 +104,38 @@ export function useWorkspaceSession(defaultSource: string) {
   const [isRunning, setIsRunning] = useState(false);
   const [runningTerminalPanelId, setRunningTerminalPanelId] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [hasPendingSave, setHasPendingSave] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   const [appNotice, setAppNotice] = useState<AppNotice | null>(null);
 
   const workspaceRef = useRef<WorkspaceState | null>(null);
   const saveTimerRef = useRef<number | null>(null);
+  const saveRequestIdRef = useRef(0);
   const loadedRef = useRef(false);
   const pendingInputResolverRef = useRef<((value: string | null) => void) | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
+    if (cloudSyncLoading) {
+      return;
+    }
 
-    void loadWorkspace(defaultSource).then((loadedWorkspace) => {
+    let cancelled = false;
+    loadedRef.current = false;
+    setWorkspace(null);
+    workspaceRef.current = null;
+    setHasPendingSave(false);
+    setSaveError(null);
+    setIsSaving(false);
+
+    void loadWorkspace(defaultSource, { mode: persistenceMode }).then((loadedWorkspace) => {
       if (cancelled) {
         return;
       }
       workspaceRef.current = loadedWorkspace;
       setWorkspace(loadedWorkspace);
+      setHasPendingSave(false);
+      setLastSavedAt(null);
       loadedRef.current = true;
     });
 
@@ -121,16 +150,43 @@ export function useWorkspaceSession(defaultSource: string) {
         resolver(null);
       }
     };
-  }, [defaultSource]);
+  }, [cloudSyncLoading, defaultSource, persistenceMode]);
 
-  const persistWorkspace = useCallback(async (nextWorkspace: WorkspaceState) => {
-    try {
-      await saveWorkspace(nextWorkspace);
+  const persistWorkspace = useCallback(async (nextWorkspace: WorkspaceState, requestId: number) => {
+    if (persistenceMode === "memory") {
+      if (saveRequestIdRef.current !== requestId) {
+        return false;
+      }
       setSaveError(null);
-    } catch {
-      setSaveError("Autosave failed. Changes remain in memory on this device.");
+      setHasPendingSave(true);
+      setLastSavedAt(null);
+      setIsSaving(false);
+      return false;
     }
-  }, []);
+
+    setIsSaving(true);
+    try {
+      await saveWorkspace(nextWorkspace, { mode: persistenceMode });
+      if (saveRequestIdRef.current !== requestId) {
+        return false;
+      }
+      setSaveError(null);
+      setHasPendingSave(false);
+      setLastSavedAt(Date.now());
+      return true;
+    } catch {
+      if (saveRequestIdRef.current !== requestId) {
+        return false;
+      }
+      setSaveError("Autosave failed. Changes remain in memory on this device.");
+      setHasPendingSave(true);
+      return false;
+    } finally {
+      if (saveRequestIdRef.current === requestId) {
+        setIsSaving(false);
+      }
+    }
+  }, [persistenceMode]);
 
   const commitWorkspace = useCallback(
     (nextWorkspace: WorkspaceState, mode: "immediate" | "debounced") => {
@@ -141,12 +197,22 @@ export function useWorkspaceSession(defaultSource: string) {
         return;
       }
 
+      const requestId = saveRequestIdRef.current + 1;
+      saveRequestIdRef.current = requestId;
+      setHasPendingSave(true);
+
+      if (persistenceMode === "memory") {
+        setSaveError(null);
+        setLastSavedAt(null);
+        return;
+      }
+
       if (mode === "immediate") {
         if (saveTimerRef.current !== null) {
           window.clearTimeout(saveTimerRef.current);
           saveTimerRef.current = null;
         }
-        void persistWorkspace(nextWorkspace);
+        void persistWorkspace(nextWorkspace, requestId);
         return;
       }
 
@@ -155,10 +221,10 @@ export function useWorkspaceSession(defaultSource: string) {
       }
       saveTimerRef.current = window.setTimeout(() => {
         saveTimerRef.current = null;
-        void persistWorkspace(nextWorkspace);
-      }, 500);
+        void persistWorkspace(nextWorkspace, requestId);
+      }, autoSaveDelayMs);
     },
-    [persistWorkspace],
+    [autoSaveDelayMs, persistWorkspace, persistenceMode],
   );
 
   const resolvePendingInput = useCallback((value: string | null) => {
@@ -199,6 +265,24 @@ export function useWorkspaceSession(defaultSource: string) {
   }, []);
 
   const dismissNotice = useCallback(() => setAppNotice(null), []);
+
+  const saveWorkspaceNow = useCallback(async () => {
+    const current = workspaceRef.current;
+    if (!current) {
+      showAppError("Open or create a workspace before saving.");
+      return false;
+    }
+
+    if (saveTimerRef.current !== null) {
+      window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+
+    const requestId = saveRequestIdRef.current + 1;
+    saveRequestIdRef.current = requestId;
+    setHasPendingSave(true);
+    return await persistWorkspace(current, requestId);
+  }, [persistWorkspace, showAppError]);
 
   const applyWorkspaceUpdate = useCallback(
     (updater: (current: WorkspaceState) => WorkspaceState, mode: "immediate" | "debounced") => {
@@ -529,12 +613,19 @@ export function useWorkspaceSession(defaultSource: string) {
   );
 
   const createDocumentInWorkspace = useCallback(
-    (parentId?: string) => {
+    (
+      parentId?: string,
+      options?: {
+        name?: string;
+        source?: string;
+      },
+    ) => {
       applyWorkspaceUpdate(
         (current) =>
           createDocument(current, {
             parentId: parentId && workspaceHasFolder(current, parentId) ? parentId : current.rootFolderId,
-            source: "",
+            name: options?.name,
+            source: options?.source ?? "",
           }),
         "immediate",
       );
@@ -701,6 +792,9 @@ export function useWorkspaceSession(defaultSource: string) {
     isRunning,
     runningTerminalPanelId,
     saveError,
+    hasPendingSave,
+    isSaving,
+    lastSavedAt,
     appNotice,
     dismissNotice,
     setPendingInputText,
@@ -708,6 +802,7 @@ export function useWorkspaceSession(defaultSource: string) {
     cancelPendingInput: () => resolvePendingInput(null),
     compileNow,
     runNow,
+    saveWorkspaceNow,
     clearTerminal,
     selectDocument,
     handleDocumentSourceChange,

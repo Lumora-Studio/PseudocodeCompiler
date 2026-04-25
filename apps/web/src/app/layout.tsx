@@ -1,9 +1,12 @@
 import type { Metadata, Viewport } from "next";
+import { withAuth } from "@workos-inc/authkit-nextjs";
+import { AuthKitProvider } from "@workos-inc/authkit-nextjs/components";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "IGCSE Pseudocode Compiler",
-  description: "Web-based strict IGCSE pseudocode compiler and editor with Python execution.",
+  title: "Pseudocode Compiler",
+  description: "Web-based strict pseudocode compiler and editor with Python execution.",
   icons: {
     icon: [
       { url: "/favicon.ico?v=2" },
@@ -20,11 +23,12 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const { accessToken: _accessToken, ...initialAuth } = await withAuth();
   const themeBootScript = `(() => {
     try {
       const stored = window.localStorage.getItem("igcse-theme-mode");
@@ -45,7 +49,10 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
       </head>
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        <AuthKitProvider initialAuth={initialAuth}>{children}</AuthKitProvider>
+        <SpeedInsights />
+      </body>
     </html>
   );
 }

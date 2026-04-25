@@ -70,7 +70,7 @@ function RootNavigator() {
           <JsStack.Screen
             name="index"
             options={{
-              title: "IGCSE Pseudocode Compiler",
+              title: "Pseudocode Compiler",
               headerShown: false,
             }}
           />
@@ -84,7 +84,7 @@ function RootNavigator() {
           <Stack.Screen
             name="index"
             options={{
-              title: "IGCSE Pseudocode Compiler",
+              title: "Pseudocode Compiler",
               headerShown: false,
             }}
           />

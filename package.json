@@ -1,8 +1,8 @@
 {
   "name": "igcse-pseudocode-compiler",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "private": true,
-  "description": "IGCSE Pseudocode Compiler — monorepo with shared compiler, web/desktop, and mobile apps.",
+  "description": "Pseudocode Compiler — monorepo with shared compiler, web/desktop, and mobile apps.",
   "author": "Alex",
   "workspaces": [
     "packages/*",
@@ -11,6 +11,7 @@
   "scripts": {
     "dev": "npm run dev --workspace=@igcse/web",
     "dev:web": "npm run dev:web --workspace=@igcse/web",
+    "open:desktop": "npm run open:electron --workspace=@igcse/web",
     "dist": "npm run dist --workspace=@igcse/web",
     "dist:unsigned": "npm run dist:unsigned --workspace=@igcse/web",
     "pack": "npm run pack --workspace=@igcse/web",
@@ -25,5 +26,8 @@
     "typecheck:mobile": "npm run typecheck --workspace=@igcse/mobile",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present"
+  },
+  "devDependencies": {
+    "convex": "^1.36.1"
   }
 }

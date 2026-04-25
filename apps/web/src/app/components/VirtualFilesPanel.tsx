@@ -79,14 +79,14 @@ export function VirtualFilesPanel({
               setFileError(null);
             }
           }}
-          className="h-8 min-w-[200px] rounded-md border border-[var(--separator)] bg-[var(--surface)] px-3 font-mono text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
+          className="h-8 min-w-[200px] rounded-lg border border-[var(--separator)] bg-[var(--surface)] px-3 font-mono text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
           placeholder="FileA.txt"
           aria-label="New virtual file name"
         />
-        <button type="button" className="rounded-md bg-[var(--surface2)] px-3 py-1.5 text-xs font-medium text-[var(--text)] hover:bg-[var(--surface3)]" onClick={handleAddFile}>
+        <button type="button" className="rounded-lg bg-[var(--surface2)] px-3 py-1.5 text-xs font-medium text-[var(--text)] hover:bg-[var(--surface3)]" onClick={handleAddFile}>
           Add
         </button>
-        <button type="button" className="rounded-md bg-[var(--surface2)] px-3 py-1.5 text-xs font-medium text-[var(--text)] hover:bg-[var(--surface3)] disabled:opacity-40" onClick={handleDeleteFile} disabled={!activeSelected}>
+        <button type="button" className="rounded-lg bg-[var(--surface2)] px-3 py-1.5 text-xs font-medium text-[var(--text)] hover:bg-[var(--surface3)] disabled:opacity-40" onClick={handleDeleteFile} disabled={!activeSelected}>
           Delete
         </button>
       </div>
@@ -102,7 +102,7 @@ export function VirtualFilesPanel({
                 <li key={name}>
                   <button
                     type="button"
-                    className={`w-full rounded-md px-2.5 py-1.5 text-left text-sm transition ${
+                    className={`w-full rounded-lg px-2.5 py-1.5 text-left text-sm transition ${
                       activeSelected === name
                         ? "bg-[var(--selected)] text-[var(--text)]"
                         : "text-[var(--text)] hover:bg-[var(--hover)]"

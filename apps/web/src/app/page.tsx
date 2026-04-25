@@ -12,19 +12,29 @@ import {
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import {
   BookOpen,
   ChevronLeft,
   ChevronUp,
   Code,
+  Cloud,
+  CloudOff,
   Ellipsis,
   FileCode,
+  FilePlus,
   Folder,
+  GitBranch,
+  LogIn,
+  LogOut,
   PanelLeft,
   Play,
+  Save,
   Settings,
+  Sparkles,
   Terminal,
   Trash2,
+  UserRound,
   X,
 } from "lucide-react";
 import {
@@ -32,10 +42,17 @@ import {
   type WorkspaceEditorPanelInstance,
 } from "@igcse/workspace";
 import { Breadcrumbs } from "@/app/components/Breadcrumbs";
+import FlowchartEditor from "@/app/components/flowchart/FlowchartEditor";
+import ManualContent from "@/app/manual/ManualContent";
 import { MonacoPseudocodeEditor } from "@/app/components/MonacoPseudocodeEditor";
 import { WorkspaceSidebar } from "@/app/components/WorkspaceSidebar";
 import { useWorkspaceSession } from "@/app/hooks/useWorkspaceSession";
 import { isAppleTouchDevice } from "@/lib/appleTouch";
+import {
+  getClientAppPlatform,
+  getWorkspacePersistenceMode,
+  platformUsesCloudSaving,
+} from "@/lib/platform";
 import {
   applyResolvedTheme,
   getSystemTheme,
@@ -64,6 +81,11 @@ const MIN_TERMINAL_HEIGHT = 60;
 const TOUCH_TABLET_BREAKPOINT = 744;
 const TOUCH_SIDEBAR_WIDTH = 280;
 const TOUCH_OUTPUT_HEIGHT = 140;
+const AUTO_SAVE_INTERVAL_STORAGE_KEY = "pseudocode-compiler-autosave-minutes";
+const FLOWCHART_MODE_STORAGE_KEY = "pseudocode-compiler-flowchart-mode-enabled";
+const DEFAULT_AUTO_SAVE_INTERVAL_MINUTES = 5;
+const MIN_AUTO_SAVE_INTERVAL_MINUTES = 1;
+const MAX_AUTO_SAVE_INTERVAL_MINUTES = 60;
 
 type TouchTab = "editor" | "files" | "output" | "settings";
 
@@ -97,10 +119,70 @@ const THEME_OPTIONS: Array<{ value: ThemeMode; label: string; description: strin
   },
 ];
 
+function clampAutoSaveIntervalMinutes(value: number): number {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_AUTO_SAVE_INTERVAL_MINUTES;
+  }
+
+  return Math.min(
+    MAX_AUTO_SAVE_INTERVAL_MINUTES,
+    Math.max(MIN_AUTO_SAVE_INTERVAL_MINUTES, Math.round(value)),
+  );
+}
+
+function loadAutoSaveIntervalMinutes(): number {
+  if (typeof window === "undefined") {
+    return DEFAULT_AUTO_SAVE_INTERVAL_MINUTES;
+  }
+
+  const stored = window.localStorage.getItem(AUTO_SAVE_INTERVAL_STORAGE_KEY);
+  if (!stored) {
+    return DEFAULT_AUTO_SAVE_INTERVAL_MINUTES;
+  }
+
+  return clampAutoSaveIntervalMinutes(Number(stored));
+}
+
+function saveAutoSaveIntervalMinutes(value: number): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(AUTO_SAVE_INTERVAL_STORAGE_KEY, String(value));
+}
+
+function loadFlowchartModeEnabled(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return window.localStorage.getItem(FLOWCHART_MODE_STORAGE_KEY) === "true";
+}
+
+function saveFlowchartModeEnabled(enabled: boolean): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(FLOWCHART_MODE_STORAGE_KEY, String(enabled));
+}
+
 /* ── component ── */
 
 export default function HomePage() {
   const router = useRouter();
+  const { user, loading: authLoading, signOut } = useAuth();
+  const [appPlatform] = useState(() => getClientAppPlatform());
+  const cloudSavingRequired = platformUsesCloudSaving(appPlatform);
+  const workspacePersistenceMode = getWorkspacePersistenceMode({
+    platform: appPlatform,
+    signedIn: Boolean(user),
+  });
+  const canSaveWorkspace = workspacePersistenceMode !== "memory";
+  const isDesktopShell = appPlatform === "desktop";
+  const [autoSaveIntervalMinutes, setAutoSaveIntervalMinutes] = useState(
+    () => loadAutoSaveIntervalMinutes(),
+  );
 
   const {
     workspace,
@@ -111,12 +193,16 @@ export default function HomePage() {
     isRunning,
     runningTerminalPanelId,
     saveError,
+    hasPendingSave,
+    isSaving,
+    lastSavedAt,
     appNotice,
     dismissNotice,
     setPendingInputText,
     submitPendingInput,
     cancelPendingInput,
     runNow,
+    saveWorkspaceNow,
     clearTerminal,
     selectDocument,
     handleDocumentSourceChange,
@@ -130,7 +216,11 @@ export default function HomePage() {
     setEditorActiveDocument,
     moveEditorDocumentTab,
     closeEditorDocumentTab,
-  } = useWorkspaceSession(DEFAULT_SOURCE);
+  } = useWorkspaceSession(DEFAULT_SOURCE, {
+    autoSaveDelayMs: autoSaveIntervalMinutes * 60 * 1000,
+    persistenceMode: workspacePersistenceMode,
+    cloudSyncLoading: cloudSavingRequired ? authLoading : false,
+  });
 
   /* ── local state ── */
 
@@ -144,22 +234,39 @@ export default function HomePage() {
   const [touchSidebarVisible, setTouchSidebarVisible] = useState(true);
   const [touchOutputVisible, setTouchOutputVisible] = useState(true);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
-  const [themeMode, setThemeMode] = useState<ThemeMode>("system");
-  const [systemTheme, setSystemTheme] = useState<"dark" | "light">("dark");
+  const [showSignInPrompt, setShowSignInPrompt] = useState(false);
+  const [showAccountMenu, setShowAccountMenu] = useState(false);
+  const [showFlowchart, setShowFlowchart] = useState(false);
+  const [showManual, setShowManual] = useState(false);
+  const [showFlowchartPrompt, setShowFlowchartPrompt] = useState(false);
+  const [flowchartFileName, setFlowchartFileName] = useState("");
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => loadThemeMode());
+  const [flowchartModeEnabled, setFlowchartModeEnabled] = useState(() =>
+    loadFlowchartModeEnabled(),
+  );
+
+  useEffect(() => {
+    if (!showManual && !showFlowchartPrompt) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        if (showFlowchartPrompt) setShowFlowchartPrompt(false);
+        if (showManual) setShowManual(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showManual, showFlowchartPrompt]);
+  const [systemTheme, setSystemTheme] = useState<"dark" | "light">(() => getSystemTheme());
   const [viewportSize, setViewportSize] = useState(() => ({
     width: typeof window === "undefined" ? 1280 : window.innerWidth,
     height: typeof window === "undefined" ? 800 : window.innerHeight,
   }));
-  const [isDesktopShell] = useState(() => {
-    if (typeof window === "undefined") return false;
-    const w = window as Window & { electron?: { isDesktop?: boolean } };
-    return Boolean(w.electron?.isDesktop);
-  });
   const [isAppleTouchUi] = useState(() =>
     isAppleTouchDevice(typeof navigator === "undefined" ? undefined : navigator),
   );
 
   const renameInputRef = useRef<HTMLInputElement | null>(null);
+  const accountMenuRef = useRef<HTMLDivElement | null>(null);
   const desktopTerminalScrollRef = useRef<HTMLDivElement | null>(null);
   const touchOutputScrollRef = useRef<HTMLDivElement | null>(null);
   const shouldAutoScrollOutputRef = useRef(true);
@@ -200,6 +307,8 @@ export default function HomePage() {
     ? (terminalOutputs[terminalPanelId] ?? "")
     : "";
   const resolvedTheme = resolveTheme(themeMode, systemTheme);
+  const shouldWarnBeforeUnload = hasPendingSave || saveError !== null;
+  const flowchartVisible = flowchartModeEnabled && showFlowchart;
 
   /* ── effects ── */
 
@@ -209,13 +318,6 @@ export default function HomePage() {
       renameInputRef.current?.select();
     }
   }, [renameDialog]);
-
-  useEffect(() => {
-    const initialMode = loadThemeMode();
-    const initialSystemTheme = getSystemTheme();
-    setThemeMode(initialMode);
-    setSystemTheme(initialSystemTheme);
-  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
@@ -235,6 +337,48 @@ export default function HomePage() {
     applyResolvedTheme(resolvedTheme);
     saveThemeMode(themeMode);
   }, [resolvedTheme, themeMode]);
+
+  useEffect(() => {
+    if (!showAccountMenu) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && accountMenuRef.current?.contains(target)) {
+        return;
+      }
+      setShowAccountMenu(false);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setShowAccountMenu(false);
+      }
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [showAccountMenu]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !shouldWarnBeforeUnload) {
+      return;
+    }
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "Save or export your work before leaving or refreshing this page.";
+      return event.returnValue;
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [shouldWarnBeforeUnload]);
 
   const scrollOutputToBottom = useCallback(() => {
     if (!shouldAutoScrollOutputRef.current) {
@@ -357,6 +501,24 @@ export default function HomePage() {
     runNow();
   }, [runNow]);
 
+  const handleSaveWorkspace = useCallback(() => {
+    if ((cloudSavingRequired && authLoading) || isSaving) {
+      return;
+    }
+
+    if (!canSaveWorkspace) {
+      setShowSignInPrompt(true);
+      return;
+    }
+
+    void saveWorkspaceNow();
+  }, [authLoading, canSaveWorkspace, cloudSavingRequired, isSaving, saveWorkspaceNow]);
+
+  const handleSignOut = useCallback(() => {
+    setShowAccountMenu(false);
+    void signOut({ returnTo: "/" });
+  }, [signOut]);
+
   const handleClearTerminal = useCallback(() => {
     shouldAutoScrollOutputRef.current = true;
     if (terminalPanelId) clearTerminal(terminalPanelId);
@@ -364,6 +526,72 @@ export default function HomePage() {
   const handleThemeModeChange = useCallback((mode: ThemeMode) => {
     setThemeMode(mode);
   }, []);
+
+  const handleAutoSaveIntervalChange = useCallback((value: number) => {
+    const nextValue = clampAutoSaveIntervalMinutes(value);
+    setAutoSaveIntervalMinutes(nextValue);
+    saveAutoSaveIntervalMinutes(nextValue);
+  }, []);
+
+  const handleFlowchartModeEnabledChange = useCallback((enabled: boolean) => {
+    setFlowchartModeEnabled(enabled);
+    saveFlowchartModeEnabled(enabled);
+    if (!enabled) {
+      setShowFlowchart(false);
+    }
+  }, []);
+
+  const handleToggleFlowchart = useCallback(() => {
+    if (!flowchartModeEnabled) {
+      setShowSettingsPanel(true);
+      return;
+    }
+    if (!currentDocument) {
+      setShowFlowchartPrompt(true);
+      return;
+    }
+    setShowFlowchart((prev) => !prev);
+  }, [currentDocument, flowchartModeEnabled]);
+
+  const syncFlowchartCodeToWorkspace = useCallback(
+    (
+      code: string,
+      options?: {
+        createDocumentWhenEmpty?: boolean;
+        revealCodeView?: boolean;
+      },
+    ) => {
+      if (currentDocument) {
+        if (currentDocument.source !== code) {
+          handleDocumentSourceChange(currentDocument.id, code);
+        }
+      } else if (code.trim().length > 0 || options?.createDocumentWhenEmpty) {
+        createDocumentInWorkspace(undefined, { source: code });
+      }
+
+      if (options?.revealCodeView) {
+        setShowFlowchart(false);
+      }
+    },
+    [createDocumentInWorkspace, currentDocument, handleDocumentSourceChange],
+  );
+
+  const handleFlowchartCodeChange = useCallback(
+    (code: string) => {
+      syncFlowchartCodeToWorkspace(code);
+    },
+    [syncFlowchartCodeToWorkspace],
+  );
+
+  const handleGenerateCode = useCallback(
+    (code: string) => {
+      syncFlowchartCodeToWorkspace(code, {
+        createDocumentWhenEmpty: true,
+        revealCodeView: true,
+      });
+    },
+    [syncFlowchartCodeToWorkspace],
+  );
   const isTouchTablet = isAppleTouchUi && viewportSize.width >= TOUCH_TABLET_BREAKPOINT;
   const isTouchPhone = isAppleTouchUi && viewportSize.width < TOUCH_TABLET_BREAKPOINT;
 
@@ -399,19 +627,18 @@ export default function HomePage() {
   } as const;
 
   const renderThemeSettings = (compact = false) => (
-    <div className={compact ? "mt-6 space-y-3" : "space-y-3"}>
+    <div className={compact ? "mt-6 space-y-4" : "space-y-4"}>
       <div>
         <p className="text-[11px] font-semibold tracking-[0.18em] text-[var(--text3)]">
           APPEARANCE
         </p>
         <h3 className="mt-2 text-[22px] font-semibold text-[var(--text)]">Theme</h3>
         <p className="mt-2 max-w-md text-sm leading-6 text-[var(--text2)]">
-          Choose how the compiler shell should look on this device. The editor, workspace,
-          output, and dialogs all follow the same setting.
+          Choose how the compiler shell should look on this device.
         </p>
       </div>
 
-      <div className="grid gap-3">
+      <div className="flex rounded-xl border border-[var(--separator)] bg-[var(--surface2)] p-1">
         {THEME_OPTIONS.map((option) => {
           const selected = themeMode === option.value;
           return (
@@ -420,32 +647,374 @@ export default function HomePage() {
               type="button"
               onClick={() => handleThemeModeChange(option.value)}
               aria-pressed={selected}
-              className={`rounded-2xl border px-4 py-3 text-left transition ${
+              className={`relative flex-1 rounded-lg px-3 py-2 text-sm font-medium transition ${
                 selected
-                  ? "border-[var(--accent)] bg-[var(--selected)]"
-                  : "border-[var(--separator)] bg-[var(--surface)] hover:bg-[var(--surface2)]"
+                  ? "bg-[var(--accent)] text-white shadow-sm"
+                  : "text-[var(--text2)] hover:text-[var(--text)]"
               }`}
             >
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-sm font-semibold text-[var(--text)]">{option.label}</span>
-                {selected ? (
-                  <span className="rounded-full bg-[var(--accent)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-white">
-                    Active
-                  </span>
-                ) : null}
-              </div>
-              <p className="mt-1 text-sm leading-5 text-[var(--text2)]">{option.description}</p>
+              <span className="block text-center">{option.label}</span>
             </button>
           );
         })}
       </div>
 
       <p className="text-xs text-[var(--text3)]">
-        Current resolved appearance:{" "}
+        Active appearance:{" "}
         <span className="font-semibold capitalize text-[var(--text2)]">{resolvedTheme}</span>
       </p>
     </div>
   );
+
+  const renderSaveSettings = (compact = false) => (
+    <div className={compact ? "mt-6 space-y-4" : "space-y-4"}>
+      <div>
+        <p className="text-[11px] font-semibold tracking-[0.18em] text-[var(--text3)]">
+          SAVING
+        </p>
+        <h3 className="mt-2 text-[22px] font-semibold text-[var(--text)]">Autosave</h3>
+      </div>
+
+      <div className="rounded-xl border border-[var(--separator)] bg-[var(--surface2)] px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm font-semibold text-[var(--text)]">Autosave interval</span>
+          <select
+            value={autoSaveIntervalMinutes}
+            aria-label="Autosave interval minutes"
+            onChange={(event) => handleAutoSaveIntervalChange(Number(event.target.value))}
+            className="h-9 rounded-lg border border-[var(--separator)] bg-[var(--bg)] px-3 text-sm font-semibold text-[var(--text)] outline-none focus:border-[var(--accent)] cursor-pointer"
+          >
+            <option value={1}>1 minute</option>
+            <option value={2}>2 minutes</option>
+            <option value={3}>3 minutes</option>
+            <option value={5}>5 minutes</option>
+            <option value={10}>10 minutes</option>
+            <option value={15}>15 minutes</option>
+            <option value={30}>30 minutes</option>
+            <option value={60}>60 minutes</option>
+          </select>
+        </div>
+        <p className="mt-2 text-xs text-[var(--text3)]">
+          Automatically save your workspace every {autoSaveIntervalMinutes} minute{autoSaveIntervalMinutes !== 1 ? "s" : ""}.
+        </p>
+      </div>
+    </div>
+  );
+
+  const renderBetaSettings = (compact = false) => (
+    <div className={compact ? "mt-6 space-y-4" : "space-y-4"}>
+      <div>
+        <p className="text-[11px] font-semibold tracking-[0.18em] text-[var(--text3)]">
+          FEATURE PREVIEWS
+        </p>
+        <h3 className="mt-2 text-[22px] font-semibold text-[var(--text)]">Beta features</h3>
+      </div>
+
+      <div className="flex items-center justify-between gap-4 rounded-xl border border-[var(--separator)] bg-[var(--surface2)] px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold text-[var(--text)]">Flowchart mode</span>
+            <span className="rounded-full border border-[var(--accent)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--accent)]">
+              Beta
+            </span>
+          </div>
+          <p className="mt-0.5 text-sm leading-5 text-[var(--text2)]">
+            Enable the visual flowchart editor from the toolbar.
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={flowchartModeEnabled}
+          aria-label="Enable Flowchart mode beta"
+          onClick={() => handleFlowchartModeEnabledChange(!flowchartModeEnabled)}
+          className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${
+            flowchartModeEnabled ? "bg-[var(--accent)]" : "bg-[var(--separator)]"
+          }`}
+        >
+          <span
+            className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
+              flowchartModeEnabled ? "translate-x-6" : "translate-x-1"
+            }`}
+          />
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderAccountControl = (compact = false) => {
+    if (!cloudSavingRequired) {
+      return null;
+    }
+
+    if (authLoading) {
+      return (
+        <button
+          type="button"
+          className="flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[var(--text3)]"
+          aria-label="Checking sign-in status"
+          disabled
+        >
+          <UserRound size={compact ? 15 : 16} />
+          <span className={compact ? "sr-only" : "max-w-[8rem] truncate text-xs font-medium"}>
+            Checking sign-in
+          </span>
+        </button>
+      );
+    }
+
+    if (!user) {
+      return (
+        <a
+          href="/login"
+          className={`flex h-7 items-center gap-1.5 rounded-lg bg-[var(--accent)] text-white shadow-[var(--shadow-button)] transition hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${
+            compact ? "w-7 justify-center px-0" : "px-2.5"
+          }`}
+        >
+          <LogIn size={compact ? 15 : 16} />
+          <span className={compact ? "sr-only" : "max-w-[5rem] truncate text-xs font-medium"}>
+            Sign in
+          </span>
+        </a>
+      );
+    }
+
+    const accountName = user.firstName || user.email || "Account";
+    const accountInitial = accountName.trim().charAt(0).toUpperCase() || "A";
+
+    return (
+      <div ref={accountMenuRef} className="relative">
+        <button
+          type="button"
+          className="flex h-7 items-center gap-1 rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-1.5 text-[var(--text2)] transition hover:bg-[var(--hover)] hover:text-[var(--text)]"
+          aria-label={`Account menu for ${accountName}`}
+          aria-haspopup="menu"
+          aria-expanded={showAccountMenu}
+          onClick={() => setShowAccountMenu((current) => !current)}
+        >
+          <UserRound size={compact ? 14 : 15} />
+          <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--accent)] px-1 text-[11px] font-semibold text-white">
+            {accountInitial}
+          </span>
+        </button>
+
+        {showAccountMenu ? (
+          <div
+            role="menu"
+            aria-label="Account menu"
+            className="absolute right-0 top-full z-[var(--z-overlay)] mt-2 w-64 overflow-hidden rounded-xl border border-[var(--separator)] bg-[var(--surface)] shadow-[var(--shadow-dropdown)]"
+          >
+            <div className="border-b border-[var(--separator)] px-3 py-3">
+              <div className="flex items-center gap-2">
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--accent)] text-sm font-semibold text-white">
+                  {accountInitial}
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-[var(--text)]">{accountName}</p>
+                  {user.email && user.email !== accountName ? (
+                    <p className="truncate text-xs text-[var(--text3)]">{user.email}</p>
+                  ) : null}
+                </div>
+              </div>
+              <div className="mt-2 flex items-center gap-1.5 text-[11px] text-[var(--green)]">
+                <Cloud size={13} />
+                <span>Signed in</span>
+              </div>
+            </div>
+
+            <div className="p-1.5">
+              <button
+                type="button"
+                role="menuitem"
+                className="flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left text-sm text-[var(--text2)] transition hover:bg-[var(--hover)] hover:text-[var(--text)]"
+                onClick={() => {
+                  setShowAccountMenu(false);
+                  handleSaveWorkspace();
+                }}
+              >
+                <Save size={15} />
+                <span>{isSaving ? "Saving workspace" : "Save workspace"}</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left text-sm text-[var(--text2)] transition hover:bg-[var(--hover)] hover:text-[var(--text)]"
+                onClick={() => {
+                  setShowAccountMenu(false);
+                  setShowSettingsPanel(true);
+                }}
+              >
+                <Settings size={15} />
+                <span>App settings</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left text-sm text-[var(--red)] transition hover:bg-[var(--hover)]"
+                onClick={handleSignOut}
+              >
+                <LogOut size={15} />
+                <span>Sign out</span>
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
+  const renderSaveControl = () => {
+    const blocked = (cloudSavingRequired && authLoading) || isSaving;
+    const isCloudSave = workspacePersistenceMode === "cloud";
+
+    return (
+      <button
+        type="button"
+        className={`flex h-7 w-7 items-center justify-center rounded-lg text-xs font-semibold transition ${
+          canSaveWorkspace
+            ? "text-[var(--text2)] hover:bg-[var(--hover)]"
+            : "cursor-not-allowed border border-[var(--separator)] bg-[var(--surface2)] text-[var(--text3)] opacity-70"
+        } ${blocked ? "opacity-60" : ""}`}
+        aria-label="Save workspace"
+        aria-disabled={!canSaveWorkspace || blocked}
+        disabled={blocked}
+        title={
+          canSaveWorkspace
+            ? isCloudSave
+              ? "Save workspace to cloud storage"
+              : "Save workspace locally on this device"
+            : "Sign in to save in the browser"
+        }
+        onClick={handleSaveWorkspace}
+      >
+        <Save size={15} />
+      </button>
+    );
+  };
+
+  const renderManualModal = () =>
+    showManual ? (
+      <div className="fixed inset-0 z-[var(--z-tooltip)] flex items-start justify-center bg-[var(--overlay)] p-4 pt-8 pb-8">
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="max-h-[calc(100dvh-4rem)] w-full max-w-5xl overflow-y-auto rounded-2xl border border-[var(--separator)] bg-[var(--bg)] shadow-[var(--shadow-modal)]"
+        >
+          <ManualContent isModal onClose={() => setShowManual(false)} />
+        </div>
+      </div>
+    ) : null;
+
+  const renderFlowchartPromptDialog = () =>
+    showFlowchartPrompt ? (
+      <div className="fixed inset-0 z-[var(--z-tooltip)] flex items-center justify-center bg-[var(--overlay)] p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="flowchart-prompt-title"
+          className="w-full max-w-sm rounded-xl border border-[var(--separator)] bg-[var(--surface)] p-6 shadow-[var(--shadow-modal)]"
+        >
+          <div className="flex items-center gap-3 text-[var(--text3)]">
+            <GitBranch size={20} />
+            <span className="text-xs font-semibold uppercase tracking-[0.16em]">Flowchart</span>
+          </div>
+          <h2
+            id="flowchart-prompt-title"
+            className="mt-3 text-xl font-semibold text-[var(--text)]"
+          >
+            Create a file first
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-[var(--text2)]">
+            Flowcharts are linked to pseudocode files. Create and name a new file to start building your flowchart.
+          </p>
+          <form
+            className="mt-5 space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const name = flowchartFileName.trim();
+              if (!name) return;
+              createDocumentInWorkspace(undefined, { name });
+              setShowFlowchartPrompt(false);
+              setFlowchartFileName("");
+              setShowFlowchart(true);
+            }}
+          >
+            <label className="block">
+              <span className="mb-2 block text-sm text-[var(--text2)]">File name</span>
+              <input
+                autoFocus
+                aria-label="File name"
+                value={flowchartFileName}
+                onChange={(event) => setFlowchartFileName(event.target.value)}
+                placeholder="main.pseudo"
+                className="h-10 w-full rounded-xl border border-[var(--separator)] bg-[var(--bg)] px-3 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
+              />
+            </label>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
+                onClick={() => {
+                  setShowFlowchartPrompt(false);
+                  setFlowchartFileName("");
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+                disabled={!flowchartFileName.trim()}
+              >
+                Create & Open
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    ) : null;
+
+  const renderSignInPromptDialog = () =>
+    showSignInPrompt ? (
+      <div className="fixed inset-0 z-[var(--z-tooltip)] flex items-center justify-center bg-[var(--overlay)] p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="sign-in-save-dialog-title"
+          className="w-full max-w-sm rounded-xl border border-[var(--separator)] bg-[var(--surface)] p-5 shadow-[var(--shadow-modal)]"
+        >
+          <div className="flex items-center gap-2 text-[var(--text3)]">
+            <CloudOff size={18} />
+            <span className="text-xs font-semibold uppercase tracking-[0.16em]">Signed out</span>
+          </div>
+          <h2
+            id="sign-in-save-dialog-title"
+            className="mt-3 text-xl font-semibold text-[var(--text)]"
+          >
+            Sign in to save
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-[var(--text2)]">
+            Browser saving uses your account. Sign in now to save this workspace and keep it available in the browser.
+          </p>
+          <div className="mt-5 flex justify-end gap-2">
+            <button
+              type="button"
+              className="rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] transition hover:bg-[var(--surface3)]"
+              onClick={() => setShowSignInPrompt(false)}
+            >
+              Not now
+            </button>
+            <a
+              href="/login"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-3 py-1.5 text-sm font-semibold text-white transition hover:brightness-110"
+            >
+              <LogIn size={15} />
+              Sign in
+            </a>
+          </div>
+        </div>
+      </div>
+    ) : null;
 
   const renderStarterPanel = (compact = false) => (
     <div
@@ -453,31 +1022,37 @@ export default function HomePage() {
         compact ? "py-8" : "py-12"
       }`}
     >
-      <section className="relative w-full max-w-2xl overflow-hidden rounded-[28px] border border-[var(--separator)] bg-[linear-gradient(135deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] p-8 shadow-[0_24px_80px_rgba(0,0,0,0.28)]">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(10,132,255,0.18),transparent_35%),radial-gradient(circle_at_bottom_left,rgba(52,199,89,0.12),transparent_32%)]" />
-        <div className="relative">
-          <p className="text-[11px] font-semibold tracking-[0.22em] text-[var(--accent)]">
-            START HERE
-          </p>
-          <h2 className="mt-4 text-3xl font-semibold text-[var(--text)]">
-            Create your first file.
+      <section className="relative w-full max-w-md overflow-hidden rounded-2xl border border-[var(--separator)] bg-[var(--surface)] p-8 shadow-[var(--shadow-xl)]">
+        <div className="relative flex flex-col items-center text-center">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--accent)]/10">
+            <Sparkles size={28} className="text-[var(--accent)]" />
+          </div>
+          <h2 className="mt-5 text-2xl font-semibold text-[var(--text)]">
+            Welcome to Pseudocode Compiler
           </h2>
-          <p className="mt-4 max-w-xl text-sm leading-7 text-[var(--text2)]">
+          <p className="mt-3 max-w-sm text-sm leading-6 text-[var(--text2)]">
             This workspace starts empty on purpose. Add a pseudocode file from the explorer, then write, compile, and run from there.
           </p>
-          <div className="mt-6 flex flex-wrap gap-3">
+          <div className="mt-7 flex w-full flex-col gap-2.5">
             <button
               type="button"
-              className="inline-flex h-11 items-center justify-center rounded-2xl bg-[var(--accent)] px-5 text-sm font-semibold text-white transition hover:brightness-110"
-              onClick={() => createDocumentInWorkspace()}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-5 text-sm font-semibold text-white transition hover:brightness-110"
+              onClick={() => {
+                const name = window.prompt("Enter file name:", "main.pseudo");
+                if (name && name.trim()) {
+                  createDocumentInWorkspace(undefined, { name: name.trim() });
+                }
+              }}
             >
-              Create First File
+              <FilePlus size={16} />
+              Create New File
             </button>
             <button
               type="button"
-              className="inline-flex h-11 items-center justify-center rounded-2xl border border-[var(--separator)] bg-[var(--surface)] px-5 text-sm font-semibold text-[var(--text2)] transition hover:bg-[var(--surface2)]"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[var(--separator)] bg-[var(--surface2)] px-5 text-sm font-medium text-[var(--text2)] transition hover:bg-[var(--surface3)] hover:text-[var(--text)]"
               onClick={() => createFolderInWorkspace()}
             >
+              <Folder size={16} />
               Create Folder
             </button>
           </div>
@@ -493,7 +1068,7 @@ export default function HomePage() {
         <div className="flex-1" />
         <button
           type="button"
-          className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--text3)] transition hover:bg-[var(--hover)] hover:text-[var(--text2)]"
+          className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text3)] transition hover:bg-[var(--hover)] hover:text-[var(--text2)]"
           aria-label="Clear output"
           onClick={handleClearTerminal}
         >
@@ -502,7 +1077,7 @@ export default function HomePage() {
         {onClose ? (
           <button
             type="button"
-            className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--text3)] transition hover:bg-[var(--hover)] hover:text-[var(--text2)]"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text3)] transition hover:bg-[var(--hover)] hover:text-[var(--text2)]"
             aria-label={`Close ${title.toLowerCase()}`}
             onClick={onClose}
           >
@@ -542,18 +1117,18 @@ export default function HomePage() {
               onChange={(event) => setPendingInputText(event.target.value)}
               autoFocus
               aria-label="Terminal input"
-              className="h-8 min-w-[140px] flex-1 rounded-md border border-[var(--separator)] bg-[var(--bg)] px-2 font-mono text-xs text-[var(--text)] outline-none focus:border-[var(--accent)]"
+              className="h-8 min-w-[140px] flex-1 rounded-lg border border-[var(--separator)] bg-[var(--bg)] px-2 font-mono text-xs text-[var(--text)] outline-none focus:border-[var(--accent)]"
               placeholder="Type here and press Enter"
             />
             <button
               type="submit"
-              className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-[11px] font-semibold text-white"
+              className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-[11px] font-semibold text-white"
             >
               Send
             </button>
             <button
               type="button"
-              className="rounded-md px-2.5 py-1.5 text-[11px] text-[var(--text2)] transition hover:bg-[var(--hover)]"
+              className="rounded-lg px-2.5 py-1.5 text-[11px] text-[var(--text2)] transition hover:bg-[var(--hover)]"
               onClick={cancelPendingInput}
             >
               Cancel
@@ -682,7 +1257,7 @@ export default function HomePage() {
                     </span>
                     <button
                       type="button"
-                      className="rounded-md border border-[var(--separator)] bg-[var(--surface2)] px-2.5 py-1 text-[11px] text-[var(--text2)] transition hover:bg-[var(--surface3)]"
+                      className="rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-2.5 py-1 text-[11px] text-[var(--text2)] transition hover:bg-[var(--surface3)]"
                       onClick={dismissNotice}
                     >
                       Dismiss
@@ -699,7 +1274,7 @@ export default function HomePage() {
                 <div className="flex min-w-0 flex-1 items-center gap-3">
                   <button
                     type="button"
-                    className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--accent)] transition hover:bg-[var(--hover)]"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--accent)] transition hover:bg-[var(--hover)]"
                     aria-label={touchSidebarVisible ? "Hide sidebar" : "Show sidebar"}
                     onClick={() => setTouchSidebarVisible((current) => !current)}
                   >
@@ -717,24 +1292,25 @@ export default function HomePage() {
                 </div>
 
                 <div className="flex flex-1 items-center justify-end gap-3">
+                  {renderSaveControl()}
                   <button
                     type="button"
-                    className="flex h-8 items-center gap-1.5 rounded-2xl bg-[var(--green)] px-4 text-white transition hover:brightness-110 disabled:opacity-50"
-                    aria-label={isRunning ? "Running" : "Run"}
-                    onClick={handleTouchRun}
-                    disabled={isRunning || !currentDocument}
-                  >
-                    <Play size={14} fill="white" />
-                    <span className="text-sm font-semibold">Run</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--accent)] transition hover:bg-[var(--hover)]"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--accent)] transition hover:bg-[var(--hover)]"
                     aria-label="Open settings"
                     onClick={() => setShowSettingsPanel(true)}
                   >
                     <Settings size={22} />
                   </button>
+                  <button
+                    type="button"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--green)] text-white transition hover:brightness-110 disabled:opacity-50"
+                    aria-label={isRunning ? "Running" : "Run"}
+                    onClick={handleTouchRun}
+                    disabled={isRunning || !currentDocument}
+                  >
+                    <Play size={16} fill="white" />
+                  </button>
+                  {renderAccountControl(true)}
                 </div>
               </header>
 
@@ -810,7 +1386,7 @@ export default function HomePage() {
               <header className="flex h-12 shrink-0 items-center gap-3 bg-[var(--titlebar)] px-4">
                 <button
                   type="button"
-                  className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--accent)] transition hover:bg-[var(--hover)]"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--accent)] transition hover:bg-[var(--hover)]"
                   aria-label={touchTab === "editor" ? "Open files" : "Back to editor"}
                   onClick={handlePhoneBack}
                 >
@@ -820,24 +1396,25 @@ export default function HomePage() {
                   {currentDocument?.name ?? "Create a file"}
                 </span>
                 <div className="flex-1" />
+                {renderSaveControl()}
                 <button
                   type="button"
-                  className="flex h-7 items-center gap-1 rounded-[14px] bg-[var(--green)] px-3 text-white transition hover:brightness-110 disabled:opacity-50"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--accent)] transition hover:bg-[var(--hover)]"
+            aria-label="Open manual"
+            onClick={() => setShowManual(true)}
+          >
+            <Ellipsis size={22} />
+          </button>
+                <button
+                  type="button"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--green)] text-white transition hover:brightness-110 disabled:opacity-50"
                   aria-label={isRunning ? "Running" : "Run"}
                   onClick={handleTouchRun}
                   disabled={isRunning || !currentDocument}
                 >
-                  <Play size={12} fill="white" />
-                  <span className="text-xs font-semibold">Run</span>
+                  <Play size={16} fill="white" />
                 </button>
-                <button
-                  type="button"
-                  className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--accent)] transition hover:bg-[var(--hover)]"
-                  aria-label="Open manual"
-                  onClick={() => router.push("/manual")}
-                >
-                  <Ellipsis size={22} />
-                </button>
+                {renderAccountControl(true)}
               </header>
 
               <div className="h-px shrink-0 bg-[var(--separator)]" />
@@ -888,10 +1465,12 @@ export default function HomePage() {
                         Open the manual, review the language guide, and keep the workspace controls one tap away.
                       </p>
                       {renderThemeSettings(true)}
+                      {renderSaveSettings(true)}
+                      {renderBetaSettings(true)}
                       <button
                         type="button"
                         className="mt-6 inline-flex h-10 items-center justify-center self-start rounded-2xl bg-[var(--accent)] px-5 text-sm font-semibold text-white transition hover:brightness-110"
-                        onClick={() => router.push("/manual")}
+                        onClick={() => setShowManual(true)}
                       >
                         Open Manual
                       </button>
@@ -903,7 +1482,7 @@ export default function HomePage() {
                   className="shrink-0 bg-[var(--bg)] px-4 pt-3"
                   style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 21px)" }}
                 >
-                  <div className="flex h-[50px] items-center rounded-[26px] border border-[var(--separator)] bg-[var(--surface)] p-1">
+                  <div className="flex h-[50px] items-center rounded-[var(--radius-3xl)] border border-[var(--separator)] bg-[var(--surface)] p-1">
                     {phoneTabItems.map((tab) => {
                       const Icon = tab.icon;
                       const isActive = touchTab === tab.key;
@@ -911,7 +1490,7 @@ export default function HomePage() {
                         <button
                           key={tab.key}
                           type="button"
-                          className={`flex h-full flex-1 flex-col items-center justify-center gap-[3px] rounded-[22px] transition ${
+                          className={`flex h-full flex-1 flex-col items-center justify-center gap-[3px] rounded-[var(--radius-2xl)] transition ${
                             isActive
                               ? "bg-[var(--accent)] text-white"
                               : "text-[var(--text3)]"
@@ -933,7 +1512,7 @@ export default function HomePage() {
           )}
 
           {renameDialog && (
-            <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[rgba(0,0,0,0.6)] p-4">
+            <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-[var(--overlay-strong)] p-4">
               <div
                 role="dialog"
                 aria-modal="true"
@@ -955,7 +1534,7 @@ export default function HomePage() {
                   </div>
                   <button
                     type="button"
-                    className="rounded-md border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
+                    className="rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
                     onClick={() => setRenameDialog(null)}
                   >
                     Cancel
@@ -969,20 +1548,20 @@ export default function HomePage() {
                       aria-label="Item name"
                       value={renameValue}
                       onChange={(event) => setRenameValue(event.target.value)}
-                      className="h-10 w-full rounded-lg border border-[var(--separator)] bg-[var(--bg)] px-3 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
+                      className="h-10 w-full rounded-xl border border-[var(--separator)] bg-[var(--bg)] px-3 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
                     />
                   </label>
                   <div className="flex justify-end gap-2">
                     <button
                       type="button"
-                      className="rounded-md border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
+                      className="rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
                       onClick={() => setRenameDialog(null)}
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
-                      className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+                      className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
                       disabled={!renameValue.trim()}
                     >
                       Save Name
@@ -994,7 +1573,7 @@ export default function HomePage() {
           )}
 
           {deleteDialog && (
-            <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[rgba(0,0,0,0.6)] p-4">
+            <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-[var(--overlay-strong)] p-4">
               <div
                 role="dialog"
                 aria-modal="true"
@@ -1012,14 +1591,14 @@ export default function HomePage() {
                 <div className="mt-6 flex justify-end gap-2">
                   <button
                     type="button"
-                    className="rounded-md border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
+                    className="rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
                     onClick={() => setDeleteDialog(null)}
                   >
                     Cancel
                   </button>
                   <button
                     type="button"
-                    className="rounded-md bg-[var(--red)] px-3 py-1.5 text-sm font-semibold text-white"
+                    className="rounded-lg bg-[var(--red)] px-3 py-1.5 text-sm font-semibold text-white"
                     onClick={confirmDelete}
                   >
                     Delete
@@ -1028,6 +1607,58 @@ export default function HomePage() {
               </div>
             </div>
           )}
+
+          {showSettingsPanel && (
+            <div className="fixed inset-0 z-[var(--z-overlay)] flex items-center justify-center bg-[var(--overlay)] p-4">
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="touch-settings-dialog-title"
+                className="w-full max-w-lg rounded-[var(--radius-3xl)] border border-[var(--separator)] bg-[var(--surface)] p-6 shadow-[var(--shadow-modal)]"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.2em] text-[var(--accent)]">Settings</p>
+                    <h2
+                      id="touch-settings-dialog-title"
+                      className="mt-2 text-2xl font-semibold text-[var(--text)]"
+                    >
+                      Settings
+                    </h2>
+                  </div>
+                  <button
+                    type="button"
+                    className="rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
+                    onClick={() => setShowSettingsPanel(false)}
+                  >
+                    Close
+                  </button>
+                </div>
+                <div className="mt-5 space-y-6">
+                  {renderThemeSettings()}
+                  {renderSaveSettings()}
+                  {renderBetaSettings()}
+                </div>
+                <div className="mt-6 border-t border-[var(--separator)] pt-4 text-center">
+                  <p className="text-xs text-[var(--text3)]">
+                    © 2026 Lumora Studio. All rights reserved.
+                  </p>
+                  <a
+                    href="https://www.lumorastudio.top/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-1 inline-block text-xs text-blue-500 hover:text-blue-600 hover:underline transition"
+                  >
+                    Learn more……
+                  </a>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {renderSignInPromptDialog()}
+          {renderManualModal()}
+          {renderFlowchartPromptDialog()}
         </div>
       </main>
     );
@@ -1044,7 +1675,7 @@ export default function HomePage() {
         {/* Spacer for native traffic lights (desktop) / brand label (web) */}
         <div className={`flex items-center gap-2 ${isDesktopShell ? "w-[80px]" : "w-auto"}`}>
           {isDesktopShell ? null : (
-            <span className="text-xs font-medium text-[var(--text2)]">IGCSE</span>
+            <span className="text-xs font-medium uppercase tracking-[0.18em] text-[var(--text2)]">Pseudocode</span>
           )}
         </div>
 
@@ -1054,32 +1685,48 @@ export default function HomePage() {
 
         {/* Toolbar */}
         <div className="app-no-drag flex items-center gap-1.5">
+          {renderSaveControl()}
           <button
             type="button"
-            className="flex h-7 items-center gap-1.5 rounded-[14px] bg-[var(--green)] px-3.5 py-[5px] text-white transition hover:brightness-110 disabled:opacity-50"
-            aria-label={isRunning ? "Running" : "Run"}
-            onClick={handleRun}
-            disabled={isRunning || !currentDocument}
-          >
-            <Play size={12} fill="white" />
-            <span className="text-xs font-semibold">Run</span>
-          </button>
-          <button
-            type="button"
-            className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--text3)] transition hover:text-[var(--text2)]"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text3)] transition hover:text-[var(--text2)]"
             aria-label="Manual"
-            onClick={() => router.push("/manual")}
+            onClick={() => setShowManual(true)}
           >
             <BookOpen size={18} />
           </button>
+          {flowchartModeEnabled ? (
+            <button
+              type="button"
+              className={`flex h-7 w-7 items-center justify-center rounded-lg transition ${
+                flowchartVisible
+                  ? "bg-[var(--accent)] text-white"
+                  : "text-[var(--text3)] hover:text-[var(--text2)]"
+              }`}
+              aria-label={flowchartVisible ? "Switch to code view" : "Switch to flowchart view"}
+              title={flowchartVisible ? "Switch to code view" : "Switch to flowchart view"}
+              onClick={handleToggleFlowchart}
+            >
+              <GitBranch size={18} />
+            </button>
+          ) : null}
           <button
             type="button"
-            className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--text3)] transition hover:text-[var(--text2)]"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text3)] transition hover:text-[var(--text2)]"
             aria-label="Settings"
             onClick={() => setShowSettingsPanel(true)}
           >
             <Settings size={18} />
           </button>
+          <button
+            type="button"
+            className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--green)] text-white transition hover:brightness-110 disabled:opacity-50"
+            aria-label={isRunning ? "Running" : "Run"}
+            onClick={handleRun}
+            disabled={isRunning || !currentDocument}
+          >
+            <Play size={15} fill="white" />
+          </button>
+          {renderAccountControl()}
         </div>
       </header>
 
@@ -1102,7 +1749,7 @@ export default function HomePage() {
                 </span>
                 <button
                   type="button"
-                  className="rounded-md border border-[var(--separator)] bg-[var(--surface2)] px-2.5 py-1 text-[11px] text-[var(--text2)] transition hover:bg-[var(--surface3)]"
+                  className="rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-2.5 py-1 text-[11px] text-[var(--text2)] transition hover:bg-[var(--surface3)]"
                   onClick={dismissNotice}
                 >
                   Dismiss
@@ -1137,86 +1784,111 @@ export default function HomePage() {
         />
 
         {/* ──── Editor Area ──── */}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--bg)]">
-          {/* Tab Bar */}
-          {editorPanel && (
-            <div className="flex h-[38px] shrink-0 items-center gap-0.5 overflow-x-auto px-2">
-              {editorPanel.openDocumentIds.map((documentId, index) => {
-                const doc = workspace.nodes[documentId];
-                if (!doc || doc.type !== "document") return null;
-                const isActive = documentId === editorPanel.activeDocumentId;
-                return (
-                  <div
-                    key={documentId}
-                    draggable
-                    className={`group flex h-[30px] shrink-0 items-center gap-1.5 rounded-md px-3 text-[12px] font-medium transition ${
-                      isActive
-                        ? "bg-[var(--surface2)] text-[var(--text)]"
-                        : "text-[var(--text3)] hover:bg-[var(--hover)] hover:text-[var(--text2)]"
-                    }`}
-                    onClick={() => setEditorActiveDocument(editorPanel.id, documentId)}
-                    onDragStart={(event) => {
-                      event.dataTransfer.effectAllowed = "move";
-                      event.dataTransfer.setData(
-                        "application/x-editor-tab",
-                        JSON.stringify({ panelId: editorPanel.id, documentId }),
-                      );
-                      event.dataTransfer.setData("text/plain", doc.name);
-                    }}
-                    onDragOver={(event) => event.preventDefault()}
-                    onDrop={(event) => handleTabDrop(event, index)}
-                  >
-                    <FileCode
-                      size={14}
-                      className={isActive ? "text-[var(--accent)]" : "text-[var(--text3)]"}
-                    />
-                    <span className="truncate">{doc.name}</span>
-                    <button
-                      type="button"
-                      className="rounded p-0.5 text-[var(--text3)] opacity-0 hover:bg-[var(--hover)] hover:text-[var(--text)] group-hover:opacity-100"
-                      aria-label={`Close ${doc.name}`}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        closeEditorDocumentTab(editorPanel.id, documentId);
-                      }}
-                    >
-                      <X size={12} />
-                    </button>
-                  </div>
-                );
-              })}
-              {/* Drop target at end of tab bar */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bg)]">
+          <div className="relative min-h-0 flex-1 overflow-hidden">
+            {flowchartModeEnabled ? (
               <div
-                className="h-[38px] min-w-[32px] flex-1"
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={(event) => handleTabDrop(event, editorPanel.openDocumentIds.length)}
-              />
+                aria-hidden={!flowchartVisible}
+                className={`absolute inset-0 z-20 min-h-0 min-w-0 transition-transform duration-500 ease-in-out ${
+                  flowchartVisible ? "translate-x-0" : "translate-x-full pointer-events-none"
+                }`}
+              >
+                <FlowchartEditor
+                  source={currentDocument?.source ?? ""}
+                  onCodeChange={handleFlowchartCodeChange}
+                  onGenerateCode={handleGenerateCode}
+                />
+              </div>
+            ) : null}
+
+            {/* Code View */}
+            <div
+              aria-hidden={flowchartVisible}
+              className={`absolute inset-0 flex min-h-0 min-w-0 flex-col transition-transform duration-500 ease-in-out ${
+                flowchartVisible ? "-translate-x-full pointer-events-none" : "translate-x-0"
+              }`}
+            >
+              {/* Tab Bar */}
+              {editorPanel && (
+                <div className="flex h-[38px] shrink-0 items-center gap-0.5 overflow-x-auto px-2">
+                  {editorPanel.openDocumentIds.map((documentId, index) => {
+                    const doc = workspace.nodes[documentId];
+                    if (!doc || doc.type !== "document") return null;
+                    const isActive = documentId === editorPanel.activeDocumentId;
+                    return (
+                      <div
+                        key={documentId}
+                        draggable
+                        className={`group flex h-[30px] shrink-0 items-center gap-1.5 rounded-lg px-3 text-[12px] font-medium transition ${
+                          isActive
+                            ? "bg-[var(--surface2)] text-[var(--text)]"
+                            : "text-[var(--text3)] hover:bg-[var(--hover)] hover:text-[var(--text2)]"
+                        }`}
+                        onClick={() => setEditorActiveDocument(editorPanel.id, documentId)}
+                        onDragStart={(event) => {
+                          event.dataTransfer.effectAllowed = "move";
+                          event.dataTransfer.setData(
+                            "application/x-editor-tab",
+                            JSON.stringify({ panelId: editorPanel.id, documentId }),
+                          );
+                          event.dataTransfer.setData("text/plain", doc.name);
+                        }}
+                        onDragOver={(event) => event.preventDefault()}
+                        onDrop={(event) => handleTabDrop(event, index)}
+                      >
+                        <FileCode
+                          size={14}
+                          className={isActive ? "text-[var(--accent)]" : "text-[var(--text3)]"}
+                        />
+                        <span className="truncate">{doc.name}</span>
+                        <button
+                          type="button"
+                          className="rounded-lg p-0.5 text-[var(--text3)] opacity-0 hover:bg-[var(--hover)] hover:text-[var(--text)] group-hover:opacity-100"
+                          aria-label={`Close ${doc.name}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            closeEditorDocumentTab(editorPanel.id, documentId);
+                          }}
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                  {/* Drop target at end of tab bar */}
+                  <div
+                    className="h-[38px] min-w-[32px] flex-1"
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={(event) => handleTabDrop(event, editorPanel.openDocumentIds.length)}
+                  />
+                </div>
+              )}
+
+              {/* Breadcrumb */}
+              <div className="flex h-7 shrink-0 items-center px-4">
+                <Breadcrumbs path={breadcrumbs} />
+              </div>
+
+              {/* Editor Separator */}
+              <div className="h-px shrink-0 bg-[var(--separator)]" />
+
+              {/* Editor Content */}
+              <div className="min-h-0 flex-1">
+                {editorActiveDoc ? (
+                  <MonacoPseudocodeEditor
+                    documentKey={editorActiveDoc.id}
+                    value={editorActiveDoc.source}
+                    onChange={(value) => handleDocumentSourceChange(editorActiveDoc.id, value)}
+                    diagnostics={
+                      activeDocument?.id === editorActiveDoc.id ? compileDiagnostics : []
+                    }
+                    theme={resolvedTheme}
+                  />
+                ) : (
+                  renderStarterPanel()
+                )}
+              </div>
             </div>
-          )}
-
-          {/* Breadcrumb */}
-          <div className="flex h-7 shrink-0 items-center px-4">
-            <Breadcrumbs path={breadcrumbs} />
-          </div>
-
-          {/* Editor Separator */}
-          <div className="h-px shrink-0 bg-[var(--separator)]" />
-
-          {/* Editor Content */}
-          <div className="min-h-0 flex-1">
-            {editorActiveDoc ? (
-              <MonacoPseudocodeEditor
-                documentKey={editorActiveDoc.id}
-                value={editorActiveDoc.source}
-                onChange={(value) => handleDocumentSourceChange(editorActiveDoc.id, value)}
-                diagnostics={
-                  activeDocument?.id === editorActiveDoc.id ? compileDiagnostics : []
-                }
-                theme={resolvedTheme}
-              />
-            ) : (
-              renderStarterPanel()
-            )}
           </div>
 
           {/* Terminal Resize Handle */}
@@ -1241,8 +1913,8 @@ export default function HomePage() {
                 <div className="flex-1" />
                 <button
                   type="button"
-                  className="flex items-center justify-center rounded text-[var(--text3)] transition hover:text-[var(--text2)]"
-                  aria-label="Close terminal"
+                      className="flex items-center justify-center rounded-lg text-[var(--text3)] transition hover:text-[var(--text2)]"
+                      aria-label="Close terminal"
                   onClick={() => setShowTerminal(false)}
                 >
                   <X size={14} />
@@ -1287,18 +1959,18 @@ export default function HomePage() {
                       onChange={(event) => setPendingInputText(event.target.value)}
                       autoFocus
                       aria-label="Terminal input"
-                      className="h-7 flex-1 rounded-md border border-[var(--separator)] bg-[var(--bg)] px-2 font-mono text-xs text-[var(--text)] outline-none focus:border-[var(--accent)]"
+                      className="h-7 flex-1 rounded-lg border border-[var(--separator)] bg-[var(--bg)] px-2 font-mono text-xs text-[var(--text)] outline-none focus:border-[var(--accent)]"
                       placeholder="Type here and press Enter"
                     />
                     <button
                       type="submit"
-                      className="rounded-md bg-[var(--accent)] px-2.5 py-1 text-[11px] font-medium text-white"
+                      className="rounded-lg bg-[var(--accent)] px-2.5 py-1 text-[11px] font-medium text-white"
                     >
                       Send
                     </button>
                     <button
                       type="button"
-                      className="rounded-md px-2.5 py-1 text-[11px] text-[var(--text2)] hover:bg-[var(--hover)]"
+                      className="rounded-lg px-2.5 py-1 text-[11px] text-[var(--text2)] hover:bg-[var(--hover)]"
                       onClick={cancelPendingInput}
                     >
                       Cancel
@@ -1321,12 +1993,12 @@ export default function HomePage() {
       </div>
 
       {showSettingsPanel && (
-        <div className="fixed inset-0 z-[65] flex items-center justify-center bg-[rgba(18,15,12,0.45)] p-4">
+        <div className="fixed inset-0 z-[var(--z-overlay)] flex items-center justify-center bg-[var(--overlay)] p-4">
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="settings-dialog-title"
-            className="w-full max-w-lg rounded-[24px] border border-[var(--separator)] bg-[var(--surface)] p-6 shadow-[0_20px_60px_rgba(0,0,0,0.22)]"
+            className="w-full max-w-lg rounded-[var(--radius-3xl)] border border-[var(--separator)] bg-[var(--surface)] p-6 shadow-[var(--shadow-modal)]"
           >
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -1335,25 +2007,42 @@ export default function HomePage() {
                   id="settings-dialog-title"
                   className="mt-2 text-2xl font-semibold text-[var(--text)]"
                 >
-                  Appearance
+                  Settings
                 </h2>
               </div>
               <button
                 type="button"
-                className="rounded-md border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
+                className="rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
                 onClick={() => setShowSettingsPanel(false)}
               >
                 Close
               </button>
             </div>
-            <div className="mt-5">{renderThemeSettings()}</div>
+            <div className="mt-5 space-y-6">
+              {renderThemeSettings()}
+              {renderSaveSettings()}
+              {renderBetaSettings()}
+            </div>
+            <div className="mt-6 border-t border-[var(--separator)] pt-4 text-center">
+              <p className="text-xs text-[var(--text3)]">
+                © 2026 Lumora Studio. All rights reserved.
+              </p>
+              <a
+                href="https://www.lumorastudio.top/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1 inline-block text-xs text-blue-500 hover:text-blue-600 hover:underline transition"
+              >
+                Learn more……
+              </a>
+            </div>
           </div>
         </div>
       )}
 
       {/* ════════════ Rename Dialog ════════════ */}
       {renameDialog && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[rgba(0,0,0,0.6)] p-4">
+        <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-[var(--overlay-strong)] p-4">
           <div
             role="dialog"
             aria-modal="true"
@@ -1375,7 +2064,7 @@ export default function HomePage() {
               </div>
               <button
                 type="button"
-                className="rounded-md border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
+                className="rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
                 onClick={() => setRenameDialog(null)}
               >
                 Cancel
@@ -1389,20 +2078,20 @@ export default function HomePage() {
                   aria-label="Item name"
                   value={renameValue}
                   onChange={(event) => setRenameValue(event.target.value)}
-                  className="h-10 w-full rounded-lg border border-[var(--separator)] bg-[var(--bg)] px-3 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
+                  className="h-10 w-full rounded-xl border border-[var(--separator)] bg-[var(--bg)] px-3 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
                 />
               </label>
               <div className="flex justify-end gap-2">
                 <button
                   type="button"
-                  className="rounded-md border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
+                  className="rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
                   onClick={() => setRenameDialog(null)}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+                  className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
                   disabled={!renameValue.trim()}
                 >
                   Save Name
@@ -1415,7 +2104,7 @@ export default function HomePage() {
 
       {/* ════════════ Delete Dialog ════════════ */}
       {deleteDialog && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[rgba(0,0,0,0.6)] p-4">
+        <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-[var(--overlay-strong)] p-4">
           <div
             role="dialog"
             aria-modal="true"
@@ -1433,14 +2122,14 @@ export default function HomePage() {
             <div className="mt-6 flex justify-end gap-2">
               <button
                 type="button"
-                className="rounded-md border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
+                className="rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
                 onClick={() => setDeleteDialog(null)}
               >
                 Cancel
               </button>
               <button
                 type="button"
-                className="rounded-md bg-[var(--red)] px-3 py-1.5 text-sm font-semibold text-white"
+                className="rounded-lg bg-[var(--red)] px-3 py-1.5 text-sm font-semibold text-white"
                 onClick={confirmDelete}
               >
                 Delete
@@ -1449,6 +2138,10 @@ export default function HomePage() {
           </div>
         </div>
       )}
+
+      {renderSignInPromptDialog()}
+      {renderManualModal()}
+      {renderFlowchartPromptDialog()}
     </main>
   );
 }

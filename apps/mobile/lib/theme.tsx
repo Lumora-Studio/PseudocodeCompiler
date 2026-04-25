@@ -43,6 +43,11 @@ export interface ThemeColors {
   selectionStrong: string;
   terminalIndicator: "white" | "black";
   inputKeyboardAppearance: "dark" | "light";
+  flowchartTerminator: string;
+  flowchartProcess: string;
+  flowchartDecision: string;
+  flowchartIo: string;
+  flowchartSubroutine: string;
   bg: string;
   sidebar: string;
   titlebar: string;
@@ -95,10 +100,15 @@ const darkColors: ThemeColors = {
   lineNumber: "#48484A",
   hover: "rgba(255, 255, 255, 0.04)",
   shadow: "rgba(0, 0, 0, 0.4)",
-  overlay: "rgba(0, 0, 0, 0.6)",
+  overlay: "rgba(0, 0, 0, 0.55)",
   selectionStrong: "rgba(10, 132, 255, 0.28)",
   terminalIndicator: "white",
   inputKeyboardAppearance: "dark",
+  flowchartTerminator: "#30D158",
+  flowchartProcess: "#8B5CF6",
+  flowchartDecision: "#FF9F0A",
+  flowchartIo: "#0A84FF",
+  flowchartSubroutine: "#0A84FF",
   bg: "#1C1C1E",
   sidebar: "#262628",
   titlebar: "#323234",
@@ -120,7 +130,7 @@ const lightColors: ThemeColors = {
   background: "#FFFFFF",
   sidebarPanel: "#FAFAFA",
   chrome: "#FFFFFF",
-  panel: "#FFFFFF",
+  panel: "#FAFAFA",
   panelRaised: "#F5F5F5",
   panelStrong: "#EDEDED",
   border: "#E5E5E5",
@@ -142,11 +152,16 @@ const lightColors: ThemeColors = {
   syntaxPlain: "#111111",
   lineNumber: "#CFCFCF",
   hover: "rgba(17, 17, 17, 0.04)",
-  shadow: "rgba(17, 17, 17, 0.08)",
-  overlay: "rgba(17, 17, 17, 0.16)",
+  shadow: "rgba(0, 0, 0, 0.08)",
+  overlay: "rgba(0, 0, 0, 0.55)",
   selectionStrong: "rgba(11, 110, 79, 0.22)",
   terminalIndicator: "black",
   inputKeyboardAppearance: "light",
+  flowchartTerminator: "#0B8F55",
+  flowchartProcess: "#7C3AED",
+  flowchartDecision: "#B45309",
+  flowchartIo: "#0B6E4F",
+  flowchartSubroutine: "#0B6E4F",
   bg: "#FFFFFF",
   sidebar: "#FAFAFA",
   titlebar: "#FFFFFF",

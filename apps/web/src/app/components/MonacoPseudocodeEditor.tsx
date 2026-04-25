@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
-import Editor, { OnMount } from "@monaco-editor/react";
+import Editor, { BeforeMount, OnMount } from "@monaco-editor/react";
 import type * as Monaco from "monaco-editor";
 import { Diagnostic } from "@/compiler/types";
 import { autoCorrectPseudocodeLine } from "@/app/components/pseudocodeAutocorrect";
 import { isAppleTouchDevice } from "@/lib/appleTouch";
+import { ensureMonacoNullCaretHitTestGuard } from "@/lib/monacoNullCaretHitTestGuard";
 import { getPseudocodeEditorOptions } from "@/lib/pseudocodeEditorOptions";
 import type { ResolvedTheme } from "@/lib/theme";
 
@@ -129,6 +130,10 @@ const ROUTINE_SUGGESTIONS = [
 let pseudocodeLanguageRegistered = false;
 let pseudocodeCompletionProviderRegistered = false;
 
+if (typeof window !== "undefined") {
+  void ensureMonacoNullCaretHitTestGuard();
+}
+
 export function MonacoPseudocodeEditor({
   value,
   onChange,
@@ -140,6 +145,10 @@ export function MonacoPseudocodeEditor({
   const editorRef = useRef<import("monaco-editor").editor.IStandaloneCodeEditor | null>(null);
   const appleTouchDevice = useMemo(() => isAppleTouchDevice(typeof navigator === "undefined" ? undefined : navigator), []);
   const editorOptions = useMemo(() => getPseudocodeEditorOptions(appleTouchDevice), [appleTouchDevice]);
+
+  const handleBeforeMount: BeforeMount = () => {
+    void ensureMonacoNullCaretHitTestGuard();
+  };
 
   const markers = useMemo(() => {
     return diagnostics.map((diagnostic) => ({
@@ -527,11 +536,12 @@ export function MonacoPseudocodeEditor({
       defaultLanguage="igcse-pseudocode"
       value={value}
       onChange={(nextValue) => onChange(nextValue ?? "")}
+      beforeMount={handleBeforeMount}
       onMount={handleMount}
       options={editorOptions}
       loading={
         <div className="flex h-full items-center justify-center bg-[var(--bg)] px-6">
-          <div className="w-full max-w-xl rounded-[24px] border border-[var(--separator)] bg-[var(--surface)] p-6">
+          <div className="w-full max-w-xl rounded-[var(--radius-3xl)] border border-[var(--separator)] bg-[var(--surface)] p-6">
             <p className="text-[11px] font-semibold tracking-[0.2em] text-[var(--accent)]">
               EDITOR
             </p>
