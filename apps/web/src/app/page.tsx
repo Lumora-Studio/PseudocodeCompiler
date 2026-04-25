@@ -31,7 +31,6 @@ import {
   Play,
   Save,
   Settings,
-  Sparkles,
   Terminal,
   Trash2,
   UserRound,
@@ -755,7 +754,7 @@ export default function HomePage() {
           aria-label="Checking sign-in status"
           disabled
         >
-          <UserRound size={compact ? 15 : 16} />
+          <UserRound size={compact ? 18 : 18} />
           <span className={compact ? "sr-only" : "max-w-[8rem] truncate text-xs font-medium"}>
             Checking sign-in
           </span>
@@ -771,7 +770,7 @@ export default function HomePage() {
             compact ? "w-7 justify-center px-0" : "px-2.5"
           }`}
         >
-          <LogIn size={compact ? 15 : 16} />
+          <LogIn size={compact ? 18 : 18} />
           <span className={compact ? "sr-only" : "max-w-[5rem] truncate text-xs font-medium"}>
             Sign in
           </span>
@@ -792,7 +791,7 @@ export default function HomePage() {
           aria-expanded={showAccountMenu}
           onClick={() => setShowAccountMenu((current) => !current)}
         >
-          <UserRound size={compact ? 14 : 15} />
+          <UserRound size={compact ? 18 : 18} />
           <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--accent)] px-1 text-[11px] font-semibold text-white">
             {accountInitial}
           </span>
@@ -832,7 +831,7 @@ export default function HomePage() {
                   handleSaveWorkspace();
                 }}
               >
-                <Save size={15} />
+        <Save size={18} />
                 <span>{isSaving ? "Saving workspace" : "Save workspace"}</span>
               </button>
               <button
@@ -887,7 +886,7 @@ export default function HomePage() {
         }
         onClick={handleSaveWorkspace}
       >
-        <Save size={15} />
+        <Save size={18} />
       </button>
     );
   };
@@ -1024,8 +1023,12 @@ export default function HomePage() {
     >
       <section className="relative w-full max-w-md overflow-hidden rounded-2xl border border-[var(--separator)] bg-[var(--surface)] p-8 shadow-[var(--shadow-xl)]">
         <div className="relative flex flex-col items-center text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--accent)]/10">
-            <Sparkles size={28} className="text-[var(--accent)]" />
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--surface)]">
+            <img
+              src="/branding/app-icon.svg"
+              alt="Pseudocode Compiler"
+              className="h-9 w-9"
+            />
           </div>
           <h2 className="mt-5 text-2xl font-semibold text-[var(--text)]">
             Welcome to Pseudocode Compiler
@@ -1308,7 +1311,7 @@ export default function HomePage() {
                     onClick={handleTouchRun}
                     disabled={isRunning || !currentDocument}
                   >
-                    <Play size={16} fill="white" />
+                    <Play size={22} fill="white" />
                   </button>
                   {renderAccountControl(true)}
                 </div>
@@ -1412,7 +1415,7 @@ export default function HomePage() {
                   onClick={handleTouchRun}
                   disabled={isRunning || !currentDocument}
                 >
-                  <Play size={16} fill="white" />
+                  <Play size={22} fill="white" />
                 </button>
                 {renderAccountControl(true)}
               </header>
@@ -1675,7 +1678,32 @@ export default function HomePage() {
         {/* Spacer for native traffic lights (desktop) / brand label (web) */}
         <div className={`flex items-center gap-2 ${isDesktopShell ? "w-[80px]" : "w-auto"}`}>
           {isDesktopShell ? null : (
-            <span className="text-xs font-medium uppercase tracking-[0.18em] text-[var(--text2)]">Pseudocode</span>
+            <a
+              href="https://www.lumorastudio.top/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 transition hover:opacity-80"
+              aria-label="Lumora Studio"
+            >
+              <svg
+                viewBox="0 0 1024 1024"
+                className="h-5 w-5 text-[var(--text2)]"
+                fill="currentColor"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M 460.015625 710.820313 L 732.5625 710.820313 L 748 648.90625 L 748 646.820313 L 477.164063 646.820313 L 599.296875 191 L 533.039063 191 L 393.710938 711 L 459.96875 711 Z"
+                />
+                <path
+                  fillRule="evenodd"
+                  d="M 719.34375 769.007813 L 490.796875 769.054688 L 387 769 L 386.9375 768.367188 C 361.493561 764.306641 342 741.343506 342 713.623291 C 342 706.989502 343.116394 700.628174 345.163605 694.733276 L 411.570313 447.6875 L 480.648438 191 L 414.398438 191 L 321.75 536.75 L 322.070313 536.828125 L 280.226563 692.640625 C 278.773163 700.176086 278 707.994141 278 716 C 278 780.61731 328.36795 833 390.5 833 L 394.03125 832.945313 L 703.390625 833 Z"
+                />
+              </svg>
+              <span className="text-xs font-semibold tracking-[0.12em] text-[var(--text2)]">
+                Lumora Studio
+              </span>
+            </a>
           )}
         </div>
 
@@ -1724,7 +1752,7 @@ export default function HomePage() {
             onClick={handleRun}
             disabled={isRunning || !currentDocument}
           >
-            <Play size={15} fill="white" />
+            <Play size={18} fill="white" />
           </button>
           {renderAccountControl()}
         </div>
