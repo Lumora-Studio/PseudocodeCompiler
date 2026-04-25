@@ -1,4 +1,8 @@
-# Pseudocode Compiler
+<p align="center">
+  <img src="./branding/app-icon.png" alt="Pseudocode Compiler app icon" width="96" height="96">
+</p>
+
+<h1 align="center">Pseudocode Compiler</h1>
 
 Monorepo for a strict pseudocode toolchain and editor suite. The project includes:
 
