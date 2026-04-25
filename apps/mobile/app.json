@@ -1,22 +1,22 @@
 {
   "expo": {
     "name": "Pseudocode Compiler",
-    "slug": "igcse-pseudocode-compiler",
-    "version": "0.1.9",
+    "slug": "pseudocode-compiler",
+    "version": "0.1.8",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "scheme": "igcse-compiler",
+    "scheme": "pseudocode-compiler",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#2C2C2E"
+      "backgroundColor": "#07090d"
     },
     "ios": {
       "icon": "./assets/ios-app-icon.icon",
       "supportsTablet": true,
       "requireFullScreen": true,
-      "bundleIdentifier": "com.alex.igcsepseudocodecompiler",
+      "bundleIdentifier": "com.alex.pseudocodecompiler",
       "buildNumber": "1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
@@ -24,7 +24,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#2C2C2E",
+        "backgroundColor": "#07090d",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"

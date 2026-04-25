@@ -1,81 +1,107 @@
-import { mutationGeneric, queryGeneric } from "convex/server";
-import { v } from "convex/values";
+import type { UserIdentity } from "convex/server";
+import { ConvexError, v } from "convex/values";
+import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 
-function requireServerSecret(serverSecret: string) {
-  const expected = process.env.WORKSPACE_SYNC_SECRET;
-  if (!expected || serverSecret !== expected) {
-    throw new Error("Unauthorized workspace sync request.");
+function requireIdentity(identity: UserIdentity | null) {
+  if (!identity) {
+    throw new ConvexError("Unauthenticated");
   }
+
+  return identity;
 }
 
-export const getCurrent = queryGeneric({
-  args: {
-    serverSecret: v.string(),
-    workosUserId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    requireServerSecret(args.serverSecret);
+async function getCurrentWorkspaceDoc(ctx: QueryCtx | MutationCtx) {
+  const identity = requireIdentity(await ctx.auth.getUserIdentity());
 
-    const workspace = await ctx.db
-      .query("workspaces")
-      .withIndex("by_workos_user", (query) => query.eq("workosUserId", args.workosUserId))
-      .unique();
+  const existing = await ctx.db
+    .query("userWorkspaces")
+    .withIndex("by_tokenIdentifier", (q) => q.eq("tokenIdentifier", identity.tokenIdentifier))
+    .unique();
 
-    return workspace?.workspace ?? null;
+  return { existing, identity };
+}
+
+export const getCurrentWorkspace = query({
+  args: {},
+  handler: async (ctx) => {
+    const { existing } = await getCurrentWorkspaceDoc(ctx);
+
+    return existing?.workspace ?? null;
   },
 });
 
-export const saveCurrent = mutationGeneric({
+export const saveCurrentWorkspace = mutation({
   args: {
-    serverSecret: v.string(),
-    user: v.object({
-      workosUserId: v.string(),
-      email: v.string(),
-      firstName: v.union(v.string(), v.null()),
-      lastName: v.union(v.string(), v.null()),
-    }),
     workspace: v.any(),
   },
   handler: async (ctx, args) => {
-    requireServerSecret(args.serverSecret);
-
-    const now = Date.now();
-    const existingUser = await ctx.db
-      .query("users")
-      .withIndex("by_workos_user", (query) => query.eq("workosUserId", args.user.workosUserId))
-      .unique();
-
-    if (existingUser) {
-      await ctx.db.patch(existingUser._id, {
-        email: args.user.email,
-        firstName: args.user.firstName,
-        lastName: args.user.lastName,
-        updatedAt: now,
-      });
-    } else {
-      await ctx.db.insert("users", {
-        ...args.user,
-        updatedAt: now,
-      });
-    }
-
-    const existingWorkspace = await ctx.db
-      .query("workspaces")
-      .withIndex("by_workos_user", (query) => query.eq("workosUserId", args.user.workosUserId))
-      .unique();
-
-    if (existingWorkspace) {
-      await ctx.db.patch(existingWorkspace._id, {
-        workspace: args.workspace,
-        updatedAt: now,
-      });
-      return existingWorkspace._id;
-    }
-
-    return await ctx.db.insert("workspaces", {
-      workosUserId: args.user.workosUserId,
+    const { existing, identity } = await getCurrentWorkspaceDoc(ctx);
+    const patch = {
+      tokenIdentifier: identity.tokenIdentifier,
+      workosUserId: identity.subject ?? undefined,
+      email:
+        typeof identity.email === "string" && identity.email.length > 0 ? identity.email : undefined,
+      name: typeof identity.name === "string" && identity.name.length > 0 ? identity.name : undefined,
       workspace: args.workspace,
-      updatedAt: now,
+      updatedAt: Date.now(),
+    };
+
+    if (existing) {
+      await ctx.db.patch(existing._id, patch);
+      return existing._id;
+    }
+
+    return ctx.db.insert("userWorkspaces", {
+      ...patch,
+      settings: {
+        autosaveIntervalMinutes: 5,
+      },
     });
+  },
+});
+
+export const getCurrentWorkspaceSettings = query({
+  args: {},
+  handler: async (ctx) => {
+    const { existing } = await getCurrentWorkspaceDoc(ctx);
+
+    return (
+      existing?.settings ?? {
+        autosaveIntervalMinutes: 5,
+      }
+    );
+  },
+});
+
+export const saveCurrentWorkspaceSettings = mutation({
+  args: {
+    autosaveIntervalMinutes: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const { existing, identity } = await getCurrentWorkspaceDoc(ctx);
+    const settings = {
+      autosaveIntervalMinutes: Math.max(1, Math.min(60, Math.round(args.autosaveIntervalMinutes))),
+    };
+
+    const patch = {
+      tokenIdentifier: identity.tokenIdentifier,
+      workosUserId: identity.subject ?? undefined,
+      email:
+        typeof identity.email === "string" && identity.email.length > 0 ? identity.email : undefined,
+      name: typeof identity.name === "string" && identity.name.length > 0 ? identity.name : undefined,
+      settings,
+      updatedAt: Date.now(),
+    };
+
+    if (existing) {
+      await ctx.db.patch(existing._id, patch);
+      return settings;
+    }
+
+    await ctx.db.insert("userWorkspaces", {
+      ...patch,
+      workspace: null,
+    });
+    return settings;
   },
 });

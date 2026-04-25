@@ -1,6 +1,6 @@
 import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { Feather } from "@expo/vector-icons";
-import type { Diagnostic } from "@igcse/compiler/types";
+import type { Diagnostic } from "@pseudocode-compiler/compiler/types";
 import {
   createThemedStyleSheet,
   fonts,

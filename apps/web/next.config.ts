@@ -6,20 +6,16 @@ const monorepoRoot = path.resolve(__dirname, "../..");
 
 const nextConfig: NextConfig = {
   output: isElectronBuild ? "export" : undefined,
-  pageExtensions: isElectronBuild ? ["tsx", "jsx"] : undefined,
+  outputFileTracingRoot: monorepoRoot,
   images: {
-    unoptimized: true,
+    unoptimized: isElectronBuild,
   },
-  transpilePackages: ["@igcse/compiler", "@igcse/workspace"],
+  experimental: {
+    optimizePackageImports: ["lucide-react"],
+  },
+  transpilePackages: ["@pseudocode-compiler/compiler", "@pseudocode-compiler/workspace"],
   turbopack: {
     root: monorepoRoot,
-    resolveAlias: isElectronBuild
-      ? {
-          "@workos-inc/authkit-nextjs": "./src/lib/authkit-electron-server.ts",
-          "@workos-inc/authkit-nextjs/components":
-            "./src/lib/authkit-electron-components.tsx",
-        }
-      : undefined,
   },
 };
 

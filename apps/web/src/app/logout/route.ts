@@ -1,11 +1,11 @@
 import { signOut } from "@workos-inc/authkit-nextjs";
+import type { NextRequest } from "next/server";
+import { normalizeAuthReturnTo } from "@/lib/auth/urls";
 
-const isElectronBuild = process.env.BUILD_TARGET === "electron";
+export async function GET(request: NextRequest) {
+  const returnPath =
+    normalizeAuthReturnTo(request.nextUrl.searchParams.get("returnTo")) ?? "/";
+  const returnTo = new URL(returnPath, request.nextUrl.origin).toString();
 
-export const GET = async () => {
-  if (isElectronBuild) {
-    return new Response(null, { status: 404 });
-  }
-
-  await signOut({ returnTo: "/" });
-};
+  return signOut({ returnTo });
+}

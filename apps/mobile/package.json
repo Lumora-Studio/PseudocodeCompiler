@@ -1,6 +1,6 @@
 {
-  "name": "@igcse/mobile",
-  "version": "0.1.9",
+  "name": "@pseudocode-compiler/mobile",
+  "version": "0.1.8",
   "main": "index.js",
   "scripts": {
     "start": "expo start",
@@ -15,8 +15,8 @@
   },
   "dependencies": {
     "@expo/metro-runtime": "~55.0.6",
-    "@igcse/compiler": "*",
-    "@igcse/workspace": "*",
+    "@pseudocode-compiler/compiler": "*",
+    "@pseudocode-compiler/workspace": "*",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-navigation/native": "^7.1.33",
     "@react-navigation/stack": "^7.8.5",

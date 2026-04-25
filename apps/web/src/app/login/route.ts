@@ -1,13 +1,12 @@
 import { getSignInUrl } from "@workos-inc/authkit-nextjs";
+import type { NextRequest } from "next/server";
 import { redirect } from "next/navigation";
+import { normalizeAuthReturnTo, resolveAuthRedirectUri } from "@/lib/auth/urls";
 
-const isElectronBuild = process.env.BUILD_TARGET === "electron";
-
-export const GET = async () => {
-  if (isElectronBuild) {
-    return new Response(null, { status: 404 });
-  }
-
-  const signInUrl = await getSignInUrl({ returnTo: "/" });
-  redirect(signInUrl);
+export const GET = async (request: NextRequest) => {
+  const signInUrl = await getSignInUrl({
+    redirectUri: resolveAuthRedirectUri(request),
+    returnTo: normalizeAuthReturnTo(request.nextUrl.searchParams.get("returnTo")),
+  });
+  return redirect(signInUrl);
 };

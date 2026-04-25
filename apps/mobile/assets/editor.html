@@ -248,8 +248,8 @@
         try {
           monaco = _monaco;
 
-    monaco.languages.register({ id: "igcse-pseudocode" });
-    monaco.languages.setMonarchTokensProvider("igcse-pseudocode", {
+    monaco.languages.register({ id: "pseudocode" });
+    monaco.languages.setMonarchTokensProvider("pseudocode", {
       tokenizer: {
         root: [
           [/\/\/.*$/, "comment"],
@@ -268,7 +268,7 @@
       }
     });
 
-    monaco.languages.setLanguageConfiguration("igcse-pseudocode", {
+    monaco.languages.setLanguageConfiguration("pseudocode", {
       brackets: [["(", ")"], ["[", "]"]],
       autoClosingPairs: [
         { open: '"', close: '"' },
@@ -284,7 +284,7 @@
       ]
     });
 
-    monaco.languages.registerCompletionItemProvider("igcse-pseudocode", {
+    monaco.languages.registerCompletionItemProvider("pseudocode", {
       provideCompletionItems: function (model, position) {
         var word = model.getWordUntilPosition(position);
         var range = {
@@ -321,7 +321,7 @@
 
     editor = monaco.editor.create(document.getElementById("editor"), {
       value: "",
-      language: "igcse-pseudocode",
+      language: "pseudocode",
       theme: "examLabTheme",
       editContext: !isAppleTouchDevice,
       minimap: { enabled: false },
@@ -673,7 +673,7 @@
           severity: d.severity === "error" ? 8 : d.severity === "warning" ? 4 : 2
         };
       });
-      monaco.editor.setModelMarkers(model, "igcse-compiler", markers);
+      monaco.editor.setModelMarkers(model, "pseudocode", markers);
     }
 
     if (data.type === "setTheme" && data.theme) {
@@ -702,7 +702,7 @@
           severity: d.severity === "error" ? 8 : d.severity === "warning" ? 4 : 2
         };
       });
-      monaco.editor.setModelMarkers(model, "igcse-compiler", resumeMarkers);
+      monaco.editor.setModelMarkers(model, "pseudocode", resumeMarkers);
 
       window.requestAnimationFrame(function () {
         editor.layout();

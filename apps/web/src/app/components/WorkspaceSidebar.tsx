@@ -26,12 +26,13 @@ import {
   getChildNodes,
   type WorkspaceNode,
   type WorkspaceState,
-} from "@igcse/workspace";
+} from "@pseudocode-compiler/workspace";
 import packageJson from "../../../package.json";
 import { supportsDesktopNativeDragAndDrop } from "@/lib/appleTouch";
 
 interface WorkspaceSidebarProps {
   workspace: WorkspaceState;
+  actionsDisabled?: boolean;
   onSelectDocument: (documentId: string) => void;
   onToggleFolder: (folderId: string) => void;
   onExpandFolder: (folderId: string) => void;
@@ -73,12 +74,12 @@ interface SelectionModifierState {
 const CONTEXT_MENU_WIDTH = 248;
 const CONTEXT_MENU_HEIGHT = 320;
 const CONTEXT_MENU_MARGIN = 14;
-const EXPLORER_RELEASE_LABEL = `alpha - version ${packageJson.version}`;
+const EXPLORER_RELEASE_LABEL = `V${packageJson.version}`;
 
 const contextMenuButtonClassName =
-  "block w-full appearance-none rounded-lg border-0 bg-transparent px-3 py-2 text-left text-sm transition hover:bg-[var(--hover)] disabled:cursor-not-allowed";
+  "block w-full appearance-none rounded-md border-0 bg-transparent px-3 py-2 text-left text-sm transition hover:bg-[var(--hover)] disabled:cursor-not-allowed";
 const contextMenuDangerButtonClassName =
-  "block w-full appearance-none rounded-lg border-0 bg-transparent px-3 py-2 text-left text-sm transition hover:bg-[var(--danger-hover)] disabled:cursor-not-allowed";
+  "block w-full appearance-none rounded-md border-0 bg-transparent px-3 py-2 text-left text-sm transition hover:bg-[rgba(255,69,58,0.12)] disabled:cursor-not-allowed";
 
 function getFileIcon(name: string, isActive: boolean) {
   const ext = name.split(".").pop()?.toLowerCase();
@@ -129,27 +130,9 @@ function getRangeSelection(nodeIds: string[], anchorId: string, currentId: strin
   return nodeIds.slice(start, end + 1);
 }
 
-function getInitialNativeDragSupport(): boolean {
-  if (typeof window === "undefined") {
-    return false;
-  }
-
-  const electronWindow = window as Window & { electron?: { isDesktop?: boolean } };
-  const isMacDesktopShell =
-    Boolean(electronWindow.electron?.isDesktop) &&
-    /Mac/i.test(typeof navigator === "undefined" ? "" : navigator.platform ?? "");
-
-  return (
-    !isMacDesktopShell &&
-    supportsDesktopNativeDragAndDrop(
-      typeof window.matchMedia === "function" ? window.matchMedia.bind(window) : undefined,
-      typeof navigator === "undefined" ? undefined : navigator,
-    )
-  );
-}
-
 export function WorkspaceSidebar({
   workspace,
+  actionsDisabled = false,
   onSelectDocument,
   onToggleFolder,
   onExpandFolder,
@@ -167,7 +150,7 @@ export function WorkspaceSidebar({
   const [anchorState, setAnchorState] = useState<string | null>(workspace.activeDocumentId);
   const [dropHint, setDropHint] = useState<DropHint | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
-  const [supportsNativeDragAndDrop] = useState(() => getInitialNativeDragSupport());
+  const [supportsNativeDragAndDrop, setSupportsNativeDragAndDrop] = useState(false);
   const draggingNodeIdsRef = useRef<string[]>([]);
   const expandHoverTimerRef = useRef<number | null>(null);
   const expandHoverFolderIdRef = useRef<string | null>(null);
@@ -176,6 +159,7 @@ export function WorkspaceSidebar({
   const dragPointerIdRef = useRef<number | null>(null);
   const suppressClickRef = useRef(false);
   const suppressClickTimerRef = useRef<number | null>(null);
+  const deferredContextActionFrameRef = useRef<number | null>(null);
   const treeContainerRef = useRef<HTMLDivElement | null>(null);
 
   const selectedNodeIds = useMemo(() => {
@@ -193,6 +177,24 @@ export function WorkspaceSidebar({
   const anchorNodeId =
     anchorState && workspace.nodes[anchorState] ? anchorState : workspace.activeDocumentId;
   const selectedNodeSet = useMemo(() => new Set(selectedNodeIds), [selectedNodeIds]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const electronWindow = window as Window & { electron?: { isDesktop?: boolean } };
+    const isMacDesktopShell =
+      Boolean(electronWindow.electron?.isDesktop) &&
+      /Mac/i.test(typeof navigator === "undefined" ? "" : navigator.platform ?? "");
+
+    setSupportsNativeDragAndDrop(
+      !isMacDesktopShell &&
+      supportsDesktopNativeDragAndDrop(
+        typeof window.matchMedia === "function" ? window.matchMedia.bind(window) : undefined,
+        typeof navigator === "undefined" ? undefined : navigator,
+      ),
+    );
+  }, []);
 
   useEffect(() => {
     if (!contextMenu) {
@@ -229,6 +231,9 @@ export function WorkspaceSidebar({
       }
       if (suppressClickTimerRef.current !== null) {
         window.clearTimeout(suppressClickTimerRef.current);
+      }
+      if (deferredContextActionFrameRef.current !== null) {
+        window.cancelAnimationFrame(deferredContextActionFrameRef.current);
       }
     },
     [],
@@ -290,6 +295,22 @@ export function WorkspaceSidebar({
       y: clampedY,
       nodeId: node.id,
       selection: nextSelection,
+    });
+  };
+
+  const closeContextMenuAndRun = (action: () => void) => {
+    setContextMenu(null);
+    if (deferredContextActionFrameRef.current !== null) {
+      window.cancelAnimationFrame(deferredContextActionFrameRef.current);
+    }
+
+    // Let the touch context menu fully dismiss before opening another surface
+    // or mutating the tree. This avoids iOS installed web app instability.
+    deferredContextActionFrameRef.current = window.requestAnimationFrame(() => {
+      deferredContextActionFrameRef.current = window.requestAnimationFrame(() => {
+        deferredContextActionFrameRef.current = null;
+        action();
+      });
     });
   };
 
@@ -807,9 +828,10 @@ export function WorkspaceSidebar({
         <div className="flex items-center gap-1">
           <button
             type="button"
-            className="flex h-7 items-center gap-1 rounded-lg px-2 text-[var(--text3)] transition hover:bg-[var(--hover)] hover:text-[var(--text2)]"
+            className="flex h-7 items-center gap-1 rounded-md px-2 text-[var(--text3)] transition hover:bg-[var(--hover)] hover:text-[var(--text2)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-[var(--text3)]"
             aria-label="Create File"
             title="Create File"
+            disabled={actionsDisabled}
             onClick={() => onCreateDocument(createTargetParentId)}
           >
             <Plus size={16} />
@@ -817,9 +839,10 @@ export function WorkspaceSidebar({
           </button>
           <button
             type="button"
-            className="flex h-7 items-center gap-1 rounded-lg px-2 text-[var(--text3)] transition hover:bg-[var(--hover)] hover:text-[var(--text2)]"
+            className="flex h-7 items-center gap-1 rounded-md px-2 text-[var(--text3)] transition hover:bg-[var(--hover)] hover:text-[var(--text2)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-[var(--text3)]"
             aria-label="Create Folder"
             title="Create Folder"
+            disabled={actionsDisabled}
             onClick={() => onCreateFolder(createTargetParentId)}
           >
             <FolderPlus size={16} />
@@ -872,7 +895,7 @@ export function WorkspaceSidebar({
                   onDragEnd={clearDragState}
                   onDragOver={(event) => handleDragOver(event, node)}
                   onDrop={(event) => handleDrop(event, node)}
-                  className={`flex h-7 items-center gap-1.5 rounded-lg transition ${
+                  className={`flex h-7 items-center gap-1.5 rounded-md transition ${
                     isSelected
                       ? "bg-[var(--selected)]"
                       : isDropTarget && dropHint?.position === "inside"
@@ -948,7 +971,7 @@ export function WorkspaceSidebar({
         </div>
       </div>
 
-      <div className="flex h-7 items-center border-t border-[var(--separator)] bg-[var(--surface-ghost)] px-3">
+      <div className="flex h-7 items-center border-t border-[var(--separator)] bg-[rgba(255,255,255,0.02)] px-3">
         <span className="truncate text-[10px] font-semibold tracking-[0.12em] text-[var(--text3)]">
           {EXPLORER_RELEASE_LABEL}
         </span>
@@ -959,7 +982,7 @@ export function WorkspaceSidebar({
         <div
           role="menu"
           aria-label="Explorer actions"
-          className="fixed z-[var(--z-dropdown)] w-[248px] overflow-hidden rounded-lg border border-[var(--surface3)] bg-[var(--surface)] shadow-[var(--shadow-dropdown)]"
+          className="fixed z-50 w-[248px] overflow-hidden rounded-lg border border-[var(--surface3)] bg-[var(--surface)] shadow-[0_22px_48px_rgba(0,0,0,0.22)]"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onMouseDown={(event) => event.stopPropagation()}
           onPointerDown={(event) => event.stopPropagation()}
@@ -984,8 +1007,7 @@ export function WorkspaceSidebar({
                   className={contextMenuButtonClassName}
                   style={{ color: "var(--text)" }}
                   onClick={() => {
-                    onCreateDocument(contextNode.id);
-                    setContextMenu(null);
+                    closeContextMenuAndRun(() => onCreateDocument(contextNode.id));
                   }}
                 >
                   New File Here
@@ -995,8 +1017,7 @@ export function WorkspaceSidebar({
                   className={contextMenuButtonClassName}
                   style={{ color: "var(--text)" }}
                   onClick={() => {
-                    onCreateFolder(contextNode.id);
-                    setContextMenu(null);
+                    closeContextMenuAndRun(() => onCreateFolder(contextNode.id));
                   }}
                 >
                   New Folder Here
@@ -1065,8 +1086,7 @@ export function WorkspaceSidebar({
                 className={contextMenuButtonClassName}
                 style={{ color: "var(--text)" }}
                 onClick={() => {
-                  onRenameNode(contextMenu.nodeId);
-                  setContextMenu(null);
+                  closeContextMenuAndRun(() => onRenameNode(contextMenu.nodeId));
                 }}
               >
                 Rename

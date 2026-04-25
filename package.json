@@ -1,33 +1,32 @@
 {
-  "name": "igcse-pseudocode-compiler",
-  "version": "0.1.9",
+  "name": "pseudocode-compiler",
+  "version": "0.1.8",
   "private": true,
-  "description": "Pseudocode Compiler — monorepo with shared compiler, web/desktop, and mobile apps.",
+  "description": "Pseudocode Compiler monorepo with shared compiler, web/desktop, and mobile apps.",
   "author": "Alex",
   "workspaces": [
     "packages/*",
     "apps/*"
   ],
   "scripts": {
-    "dev": "npm run dev --workspace=@igcse/web",
-    "dev:web": "npm run dev:web --workspace=@igcse/web",
-    "open:desktop": "npm run open:electron --workspace=@igcse/web",
-    "dist": "npm run dist --workspace=@igcse/web",
-    "dist:unsigned": "npm run dist:unsigned --workspace=@igcse/web",
-    "pack": "npm run pack --workspace=@igcse/web",
-    "ios:ipad26": "npm run ios:ipad26 --workspace=@igcse/mobile",
-    "ios:preview": "npm run ios:preview --workspace=@igcse/mobile",
-    "ios:production": "npm run ios:production --workspace=@igcse/mobile",
-    "ios:testflight": "npm run ios:testflight --workspace=@igcse/mobile",
-    "build": "npm run build --workspace=@igcse/web",
+    "dev": "npm run dev --workspace=@pseudocode-compiler/web",
+    "dev:web": "npm run dev:web --workspace=@pseudocode-compiler/web",
+    "dist": "npm run dist --workspace=@pseudocode-compiler/web",
+    "dist:unsigned": "npm run dist:unsigned --workspace=@pseudocode-compiler/web",
+    "pack": "npm run pack --workspace=@pseudocode-compiler/web",
+    "ios:ipad26": "npm run ios:ipad26 --workspace=@pseudocode-compiler/mobile",
+    "ios:preview": "npm run ios:preview --workspace=@pseudocode-compiler/mobile",
+    "ios:production": "npm run ios:production --workspace=@pseudocode-compiler/mobile",
+    "ios:testflight": "npm run ios:testflight --workspace=@pseudocode-compiler/mobile",
+    "build": "npm run build --workspace=@pseudocode-compiler/web",
     "test": "npm run test --workspaces --if-present",
-    "test:compiler": "npm run test --workspace=@igcse/compiler",
-    "test:web": "npm run test --workspace=@igcse/web",
-    "typecheck:mobile": "npm run typecheck --workspace=@igcse/mobile",
+    "test:compiler": "npm run test --workspace=@pseudocode-compiler/compiler",
+    "test:web": "npm run test --workspace=@pseudocode-compiler/web",
+    "typecheck:mobile": "npm run typecheck --workspace=@pseudocode-compiler/mobile",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present"
   },
-  "devDependencies": {
-    "convex": "^1.36.1"
+  "dependencies": {
+    "convex": "^1.35.1"
   }
 }

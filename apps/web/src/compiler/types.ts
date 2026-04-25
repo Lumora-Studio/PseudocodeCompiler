@@ -43,4 +43,4 @@ export type {
   FunctionSignature,
   ProcedureSignature,
   SemanticResult,
-} from "@igcse/compiler/types";
+} from "@pseudocode-compiler/compiler/types";

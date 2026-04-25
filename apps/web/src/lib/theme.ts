@@ -3,7 +3,7 @@
 export type ThemeMode = "system" | "dark" | "light";
 export type ResolvedTheme = "dark" | "light";
 
-const STORAGE_KEY = "igcse-theme-mode";
+const STORAGE_KEY = "pseudocode-compiler-theme-mode";
 
 export function isThemeMode(value: unknown): value is ThemeMode {
   return value === "system" || value === "dark" || value === "light";
@@ -46,4 +46,3 @@ export function applyResolvedTheme(theme: ResolvedTheme): void {
   document.documentElement.dataset.theme = theme;
   document.documentElement.style.colorScheme = theme;
 }
-

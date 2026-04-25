@@ -6,6 +6,7 @@ import {
   closePanel,
   createDocument,
   createFolder,
+  createEmptyWorkspace,
   createPanel,
   deleteNodes,
   dockPanel,
@@ -31,34 +32,39 @@ import {
   updateDocumentSource,
   updateVirtualFiles,
   workspaceHasFolder,
-} from "@igcse/workspace";
+} from "@pseudocode-compiler/workspace";
 import { compilePseudocode } from "@/compiler";
 import type { Diagnostic } from "@/compiler/types";
-import { loadWorkspace, saveWorkspace } from "@/lib/storage";
-import type { WorkspacePersistenceMode } from "@/lib/platform";
+import {
+  DEFAULT_AUTOSAVE_INTERVAL_MINUTES,
+  loadWorkspace,
+  loadWorkspaceSettings,
+  saveWorkspace,
+  saveWorkspaceSettings,
+  type WorkspacePersistenceScope,
+} from "@/lib/storage";
 import { pythonRunner } from "@/runtime/executePython";
 
 const INPUT_REQUEST_ERROR_TEXT = "INPUT requested but no stdin lines remain";
 const MAX_INTERACTIVE_INPUTS = 200;
 const TERMINAL_PROMPT = ">";
-const DEFAULT_AUTO_SAVE_DELAY_MS = 5 * 60 * 1000;
 
 export interface AppNotice {
   tone: "error" | "info";
   message: string;
 }
 
-interface WorkspaceSessionOptions {
-  autoSaveDelayMs?: number;
-  cloudSyncEnabled?: boolean;
-  cloudSyncLoading?: boolean;
-  persistenceMode?: WorkspacePersistenceMode;
-}
-
 interface PendingTerminalInput {
   panelId: string | null;
   prompt: string | null;
   text: string;
+}
+
+type SaveBehavior = "tracked" | "untracked";
+type SaveReason = "manual" | "autosave" | "background" | "close";
+
+interface DesktopElectronBridge {
+  setDirtyState?: (dirty: boolean) => void;
 }
 
 function isInputRequestRuntimeError(stderr: string): boolean {
@@ -88,11 +94,52 @@ function summarizeDiagnostics(diagnostics: Diagnostic[]): CompileSummary {
   };
 }
 
-export function useWorkspaceSession(defaultSource: string, options: WorkspaceSessionOptions = {}) {
-  const persistenceMode =
-    options.persistenceMode ?? (options.cloudSyncEnabled ? "cloud" : "local");
-  const cloudSyncLoading = options.cloudSyncLoading ?? false;
-  const autoSaveDelayMs = Math.max(1000, options.autoSaveDelayMs ?? DEFAULT_AUTO_SAVE_DELAY_MS);
+function getTrackedWorkspaceFingerprint(workspace: WorkspaceState): string {
+  const trackedNodes = Object.values(workspace.nodes)
+    .filter((node) => node.type === "document" || node.type === "folder")
+    .map((node) =>
+      node.type === "document"
+        ? {
+            id: node.id,
+            type: node.type,
+            parentId: node.parentId,
+            name: node.name,
+            order: node.order,
+            source: node.source,
+          }
+        : {
+            id: node.id,
+            type: node.type,
+            parentId: node.parentId,
+            name: node.name,
+            order: node.order,
+          },
+    )
+    .sort((left, right) => left.id.localeCompare(right.id));
+
+  return JSON.stringify({
+    rootFolderId: workspace.rootFolderId,
+    nodes: trackedNodes,
+  });
+}
+
+function canPersistWorkspace(scope: WorkspacePersistenceScope | null): scope is Extract<
+  WorkspacePersistenceScope,
+  { kind: "authenticated" } | { kind: "local" }
+> {
+  return scope?.kind === "authenticated" || scope?.kind === "local";
+}
+
+function isLocalPersistenceScope(
+  scope: WorkspacePersistenceScope | null,
+): scope is Extract<WorkspacePersistenceScope, { kind: "local" }> {
+  return scope?.kind === "local";
+}
+
+export function useWorkspaceSession(
+  defaultSource: string,
+  persistenceScope: WorkspacePersistenceScope | null,
+) {
   const [workspace, setWorkspace] = useState<WorkspaceState | null>(null);
   const [compileDiagnostics, setCompileDiagnostics] = useState<Diagnostic[]>([]);
   const [terminalOutputs, setTerminalOutputs] = useState<Record<string, string>>({});
@@ -103,93 +150,252 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
   });
   const [isRunning, setIsRunning] = useState(false);
   const [runningTerminalPanelId, setRunningTerminalPanelId] = useState<string | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [hasPendingSave, setHasPendingSave] = useState(false);
+  const [autosaveIntervalMinutes, setAutosaveIntervalMinutes] = useState(
+    DEFAULT_AUTOSAVE_INTERVAL_MINUTES,
+  );
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [appNotice, setAppNotice] = useState<AppNotice | null>(null);
 
   const workspaceRef = useRef<WorkspaceState | null>(null);
   const saveTimerRef = useRef<number | null>(null);
-  const saveRequestIdRef = useRef(0);
+  const autosaveIntervalRef = useRef(DEFAULT_AUTOSAVE_INTERVAL_MINUTES);
+  const hasUnsavedChangesRef = useRef(false);
+  const lastSavedTrackedFingerprintRef = useRef("");
+  const savePromiseRef = useRef<Promise<boolean> | null>(null);
   const loadedRef = useRef(false);
   const pendingInputResolverRef = useRef<((value: string | null) => void) | null>(null);
+  const previousScopeRef = useRef<WorkspacePersistenceScope | null>(null);
+
+  const updateDirtyState = useCallback((value: boolean) => {
+    hasUnsavedChangesRef.current = value;
+    setHasUnsavedChanges(value);
+
+    if (typeof window !== "undefined") {
+      const electronWindow = window as Window & { electron?: DesktopElectronBridge };
+      electronWindow.electron?.setDirtyState?.(value);
+    }
+  }, []);
+
+  const clearScheduledSave = useCallback(() => {
+    if (saveTimerRef.current !== null) {
+      window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
-    if (cloudSyncLoading) {
-      return;
+    let cancelled = false;
+    const previousScope = previousScopeRef.current;
+    const currentWorkspaceSnapshot = workspaceRef.current;
+    const currentAutosaveInterval = autosaveIntervalRef.current;
+    const shouldCarryGuestWorkspace =
+      previousScope?.kind === "anonymous" &&
+      persistenceScope?.kind === "authenticated" &&
+      loadedRef.current &&
+      currentWorkspaceSnapshot !== null &&
+      hasUnsavedChangesRef.current;
+
+    previousScopeRef.current = persistenceScope;
+
+    clearScheduledSave();
+    loadedRef.current = false;
+
+    if (!shouldCarryGuestWorkspace) {
+      workspaceRef.current = null;
+      setWorkspace(null);
+      setCompileDiagnostics([]);
+      setTerminalOutputs({});
+      setPendingInput({
+        panelId: null,
+        prompt: null,
+        text: "",
+      });
+      updateDirtyState(false);
     }
 
-    let cancelled = false;
-    loadedRef.current = false;
-    setWorkspace(null);
-    workspaceRef.current = null;
-    setHasPendingSave(false);
     setSaveError(null);
-    setIsSaving(false);
 
-    void loadWorkspace(defaultSource, { mode: persistenceMode }).then((loadedWorkspace) => {
-      if (cancelled) {
-        return;
+    if (!persistenceScope) {
+      return () => {
+        cancelled = true;
+        clearScheduledSave();
+      };
+    }
+
+    void (async () => {
+      if (shouldCarryGuestWorkspace && currentWorkspaceSnapshot) {
+        try {
+          await saveWorkspace(currentWorkspaceSnapshot, persistenceScope);
+          await saveWorkspaceSettings(
+            {
+              autosaveIntervalMinutes: currentAutosaveInterval,
+            },
+            persistenceScope,
+          );
+        } catch {
+          // Fall back to loading whatever already exists for the signed-in scope.
+        }
       }
-      workspaceRef.current = loadedWorkspace;
-      setWorkspace(loadedWorkspace);
-      setHasPendingSave(false);
-      setLastSavedAt(null);
-      loadedRef.current = true;
-    });
+
+      return Promise.all([
+        loadWorkspace(defaultSource, persistenceScope),
+        loadWorkspaceSettings(persistenceScope).catch(() => ({
+          autosaveIntervalMinutes: DEFAULT_AUTOSAVE_INTERVAL_MINUTES,
+        })),
+      ]);
+    })()
+      .then(([loadedWorkspace, loadedSettings]) => {
+        if (cancelled) {
+          return;
+        }
+
+        const trackedFingerprint = getTrackedWorkspaceFingerprint(loadedWorkspace);
+        workspaceRef.current = loadedWorkspace;
+        lastSavedTrackedFingerprintRef.current = trackedFingerprint;
+        autosaveIntervalRef.current = loadedSettings.autosaveIntervalMinutes;
+        setWorkspace(loadedWorkspace);
+        setAutosaveIntervalMinutes(loadedSettings.autosaveIntervalMinutes);
+        updateDirtyState(false);
+        loadedRef.current = true;
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+
+        const fallbackWorkspace =
+          shouldCarryGuestWorkspace && currentWorkspaceSnapshot
+            ? currentWorkspaceSnapshot
+            : createEmptyWorkspace();
+        workspaceRef.current = fallbackWorkspace;
+        lastSavedTrackedFingerprintRef.current = getTrackedWorkspaceFingerprint(fallbackWorkspace);
+        autosaveIntervalRef.current = shouldCarryGuestWorkspace
+          ? currentAutosaveInterval
+          : DEFAULT_AUTOSAVE_INTERVAL_MINUTES;
+        setWorkspace(fallbackWorkspace);
+        setAutosaveIntervalMinutes(
+          shouldCarryGuestWorkspace ? currentAutosaveInterval : DEFAULT_AUTOSAVE_INTERVAL_MINUTES,
+        );
+        updateDirtyState(shouldCarryGuestWorkspace);
+        setAppNotice({
+          tone: "error",
+          message: isLocalPersistenceScope(persistenceScope)
+            ? "Unable to load the local workspace. Starting with a new local workspace."
+            : shouldCarryGuestWorkspace
+              ? "Signed in, but cloud sync is still catching up. Your current workspace is still open in this tab."
+              : "Unable to load cloud workspace. Starting with a local empty session.",
+        });
+        loadedRef.current = true;
+      });
 
     return () => {
       cancelled = true;
-      if (saveTimerRef.current !== null) {
-        window.clearTimeout(saveTimerRef.current);
-      }
+      clearScheduledSave();
       const resolver = pendingInputResolverRef.current;
       if (resolver) {
         pendingInputResolverRef.current = null;
         resolver(null);
       }
     };
-  }, [cloudSyncLoading, defaultSource, persistenceMode]);
+  }, [clearScheduledSave, defaultSource, persistenceScope, updateDirtyState]);
 
-  const persistWorkspace = useCallback(async (nextWorkspace: WorkspaceState, requestId: number) => {
-    if (persistenceMode === "memory") {
-      if (saveRequestIdRef.current !== requestId) {
-        return false;
+  const persistWorkspace = useCallback(
+    async (reason: SaveReason) => {
+      if (savePromiseRef.current) {
+        return savePromiseRef.current;
       }
-      setSaveError(null);
-      setHasPendingSave(true);
-      setLastSavedAt(null);
-      setIsSaving(false);
-      return false;
-    }
 
-    setIsSaving(true);
-    try {
-      await saveWorkspace(nextWorkspace, { mode: persistenceMode });
-      if (saveRequestIdRef.current !== requestId) {
+      const currentWorkspace = workspaceRef.current;
+      if (!currentWorkspace) {
         return false;
       }
-      setSaveError(null);
-      setHasPendingSave(false);
-      setLastSavedAt(Date.now());
-      return true;
-    } catch {
-      if (saveRequestIdRef.current !== requestId) {
+
+      if (!canPersistWorkspace(persistenceScope)) {
+        if (reason === "manual") {
+          setAppNotice({
+            tone: "info",
+            message: "Sign in to save files and folders across sessions.",
+          });
+        }
         return false;
       }
-      setSaveError("Autosave failed. Changes remain in memory on this device.");
-      setHasPendingSave(true);
-      return false;
-    } finally {
-      if (saveRequestIdRef.current === requestId) {
-        setIsSaving(false);
+
+      const saveTask = (async () => {
+        setIsSaving(true);
+
+        try {
+          await saveWorkspace(
+            currentWorkspace,
+            persistenceScope,
+            reason === "manual" || reason === "close"
+              ? {
+                  auditEvent: {
+                    action: "workspace.saved",
+                    saveReason: reason,
+                  },
+                }
+              : undefined,
+          );
+          lastSavedTrackedFingerprintRef.current = getTrackedWorkspaceFingerprint(currentWorkspace);
+          updateDirtyState(false);
+          setSaveError(null);
+
+          if (reason === "manual") {
+            setAppNotice({
+              tone: "info",
+              message: isLocalPersistenceScope(persistenceScope)
+                ? "All files and folders were saved locally."
+                : "All files and folders were saved.",
+            });
+          }
+
+          return true;
+        } catch {
+          if (isLocalPersistenceScope(persistenceScope)) {
+            setSaveError("Local save failed. Changes remain open in this app.");
+          } else if (reason === "manual" || reason === "close") {
+            setSaveError(
+              "Cloud save failed. Changes remain open in this browser and are not synced.",
+            );
+          } else {
+            setSaveError(
+              "Cloud autosave failed. Changes remain open in this browser and are not synced.",
+            );
+          }
+          return false;
+        } finally {
+          setIsSaving(false);
+        }
+      })();
+
+      savePromiseRef.current = saveTask.finally(() => {
+        savePromiseRef.current = null;
+      });
+
+      return savePromiseRef.current;
+    },
+    [persistenceScope, updateDirtyState],
+  );
+
+  const scheduleWorkspaceSave = useCallback(
+    (reason: SaveReason, delayMs: number) => {
+      if (!canPersistWorkspace(persistenceScope)) {
+        clearScheduledSave();
+        return;
       }
-    }
-  }, [persistenceMode]);
+      clearScheduledSave();
+      saveTimerRef.current = window.setTimeout(() => {
+        saveTimerRef.current = null;
+        void persistWorkspace(reason);
+      }, delayMs);
+    },
+    [clearScheduledSave, persistWorkspace, persistenceScope],
+  );
 
   const commitWorkspace = useCallback(
-    (nextWorkspace: WorkspaceState, mode: "immediate" | "debounced") => {
+    (nextWorkspace: WorkspaceState, mode: SaveBehavior) => {
       workspaceRef.current = nextWorkspace;
       setWorkspace(nextWorkspace);
 
@@ -197,34 +403,23 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
         return;
       }
 
-      const requestId = saveRequestIdRef.current + 1;
-      saveRequestIdRef.current = requestId;
-      setHasPendingSave(true);
+      const trackedFingerprint = getTrackedWorkspaceFingerprint(nextWorkspace);
+      const isDirty = trackedFingerprint !== lastSavedTrackedFingerprintRef.current;
+      updateDirtyState(isDirty);
 
-      if (persistenceMode === "memory") {
-        setSaveError(null);
-        setLastSavedAt(null);
+      if (mode === "tracked") {
+        scheduleWorkspaceSave("autosave", autosaveIntervalRef.current * 60 * 1000);
         return;
       }
 
-      if (mode === "immediate") {
-        if (saveTimerRef.current !== null) {
-          window.clearTimeout(saveTimerRef.current);
-          saveTimerRef.current = null;
-        }
-        void persistWorkspace(nextWorkspace, requestId);
+      if (isDirty) {
+        scheduleWorkspaceSave("autosave", autosaveIntervalRef.current * 60 * 1000);
         return;
       }
 
-      if (saveTimerRef.current !== null) {
-        window.clearTimeout(saveTimerRef.current);
-      }
-      saveTimerRef.current = window.setTimeout(() => {
-        saveTimerRef.current = null;
-        void persistWorkspace(nextWorkspace, requestId);
-      }, autoSaveDelayMs);
+      scheduleWorkspaceSave("background", 500);
     },
-    [autoSaveDelayMs, persistWorkspace, persistenceMode],
+    [scheduleWorkspaceSave, updateDirtyState],
   );
 
   const resolvePendingInput = useCallback((value: string | null) => {
@@ -266,26 +461,8 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
 
   const dismissNotice = useCallback(() => setAppNotice(null), []);
 
-  const saveWorkspaceNow = useCallback(async () => {
-    const current = workspaceRef.current;
-    if (!current) {
-      showAppError("Open or create a workspace before saving.");
-      return false;
-    }
-
-    if (saveTimerRef.current !== null) {
-      window.clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
-
-    const requestId = saveRequestIdRef.current + 1;
-    saveRequestIdRef.current = requestId;
-    setHasPendingSave(true);
-    return await persistWorkspace(current, requestId);
-  }, [persistWorkspace, showAppError]);
-
   const applyWorkspaceUpdate = useCallback(
-    (updater: (current: WorkspaceState) => WorkspaceState, mode: "immediate" | "debounced") => {
+    (updater: (current: WorkspaceState) => WorkspaceState, mode: SaveBehavior) => {
       const current = workspaceRef.current;
       if (!current) {
         return null;
@@ -302,6 +479,39 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
       }
     },
     [commitWorkspace, showAppError],
+  );
+
+  const saveWorkspaceNow = useCallback(
+    async (reason: SaveReason = "manual") => {
+      clearScheduledSave();
+      return persistWorkspace(reason);
+    },
+    [clearScheduledSave, persistWorkspace],
+  );
+
+  const updateAutosaveInterval = useCallback(
+    async (minutes: number) => {
+      const normalized = Math.max(1, Math.min(60, Math.round(minutes)));
+      autosaveIntervalRef.current = normalized;
+      setAutosaveIntervalMinutes(normalized);
+
+      if (!canPersistWorkspace(persistenceScope)) {
+        return;
+      }
+
+      try {
+        await saveWorkspaceSettings({
+          autosaveIntervalMinutes: normalized,
+        }, persistenceScope);
+      } catch {
+        showAppError("Unable to save autosave settings.");
+      }
+
+      if (hasUnsavedChangesRef.current) {
+        scheduleWorkspaceSave("autosave", normalized * 60 * 1000);
+      }
+    },
+    [persistenceScope, scheduleWorkspaceSave, showAppError],
   );
 
   const activeDocument = useMemo(() => {
@@ -357,7 +567,7 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
     (documentId: string, diagnostics: Diagnostic[]) => {
       applyWorkspaceUpdate(
         (current) => setDocumentCompileSummary(current, documentId, summarizeDiagnostics(diagnostics)),
-        "immediate",
+        "untracked",
       );
     },
     [applyWorkspaceUpdate],
@@ -389,7 +599,7 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
       const ensured = ensureTerminalPanel(current);
       targetPanelId = ensured.panelId;
       return ensured.state;
-    }, "immediate");
+    }, "untracked");
 
     if (!nextWorkspace || !targetPanelId) {
       return null;
@@ -537,7 +747,7 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
       }
 
       updateTerminalOutput(target.panelId, transcript.join("\n"));
-      applyWorkspaceUpdate((current) => updateVirtualFiles(current, latestVirtualFiles), "immediate");
+      applyWorkspaceUpdate((current) => updateVirtualFiles(current, latestVirtualFiles), "untracked");
     } finally {
       resolvePendingInput(null);
       setIsRunning(false);
@@ -555,7 +765,7 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
 
   const selectDocument = useCallback(
     (documentId: string) => {
-      applyWorkspaceUpdate((current) => openDocumentInFocusedEditor(current, documentId), "immediate");
+      applyWorkspaceUpdate((current) => openDocumentInFocusedEditor(current, documentId), "untracked");
     },
     [applyWorkspaceUpdate],
   );
@@ -563,7 +773,7 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
   const handleDocumentSourceChange = useCallback(
     (documentId: string, source: string) => {
       setCompileDiagnostics([]);
-      applyWorkspaceUpdate((current) => updateDocumentSource(current, documentId, source), "debounced");
+      applyWorkspaceUpdate((current) => updateDocumentSource(current, documentId, source), "tracked");
     },
     [applyWorkspaceUpdate],
   );
@@ -579,7 +789,7 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
         }
         expanded.add(current.rootFolderId);
         return setExpandedFolders(current, Array.from(expanded));
-      }, "immediate");
+      }, "untracked");
     },
     [applyWorkspaceUpdate],
   );
@@ -594,7 +804,7 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
         expanded.add(current.rootFolderId);
         expanded.add(folderId);
         return setExpandedFolders(current, Array.from(expanded));
-      }, "immediate");
+      }, "untracked");
     },
     [applyWorkspaceUpdate],
   );
@@ -606,28 +816,21 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
           createFolder(current, {
             parentId: parentId && workspaceHasFolder(current, parentId) ? parentId : current.rootFolderId,
           }),
-        "immediate",
+        "tracked",
       );
     },
     [applyWorkspaceUpdate],
   );
 
   const createDocumentInWorkspace = useCallback(
-    (
-      parentId?: string,
-      options?: {
-        name?: string;
-        source?: string;
-      },
-    ) => {
+    (parentId?: string) => {
       applyWorkspaceUpdate(
         (current) =>
           createDocument(current, {
             parentId: parentId && workspaceHasFolder(current, parentId) ? parentId : current.rootFolderId,
-            name: options?.name,
-            source: options?.source ?? "",
+            source: "",
           }),
-        "immediate",
+        "tracked",
       );
     },
     [applyWorkspaceUpdate],
@@ -635,35 +838,35 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
 
   const renameNodeInWorkspace = useCallback(
     (nodeId: string, name: string) => {
-      return !!applyWorkspaceUpdate((current) => renameNode(current, nodeId, name), "immediate");
+      return !!applyWorkspaceUpdate((current) => renameNode(current, nodeId, name), "tracked");
     },
     [applyWorkspaceUpdate],
   );
 
   const deleteNodesInWorkspace = useCallback(
     (nodeIds: string[]) => {
-      return !!applyWorkspaceUpdate((current) => deleteNodes(current, nodeIds), "immediate");
+      return !!applyWorkspaceUpdate((current) => deleteNodes(current, nodeIds), "tracked");
     },
     [applyWorkspaceUpdate],
   );
 
   const moveNodesInWorkspace = useCallback(
     (nodeIds: string[], targetFolderId: string, targetIndex: number) => {
-      return !!applyWorkspaceUpdate((current) => moveNodes(current, nodeIds, targetFolderId, targetIndex), "immediate");
+      return !!applyWorkspaceUpdate((current) => moveNodes(current, nodeIds, targetFolderId, targetIndex), "tracked");
     },
     [applyWorkspaceUpdate],
   );
 
   const focusWorkspacePanel = useCallback(
     (panelId: string) => {
-      applyWorkspaceUpdate((current) => focusPanel(current, panelId), "immediate");
+      applyWorkspaceUpdate((current) => focusPanel(current, panelId), "untracked");
     },
     [applyWorkspaceUpdate],
   );
 
   const createWorkspacePanel = useCallback(
     (kind: WorkspacePanelKind) => {
-      applyWorkspaceUpdate((current) => createPanel(current, kind).state, "immediate");
+      applyWorkspaceUpdate((current) => createPanel(current, kind).state, "untracked");
     },
     [applyWorkspaceUpdate],
   );
@@ -672,7 +875,7 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
     (panelId: string, targetStackId: string, position: WorkspaceDockPosition, targetIndex?: number) => {
       applyWorkspaceUpdate(
         (current) => dockPanel(current, panelId, targetStackId, position, targetIndex),
-        "immediate",
+        "untracked",
       );
     },
     [applyWorkspaceUpdate],
@@ -684,32 +887,32 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
         showAppError("A terminal panel cannot be closed while a run is still active.");
         return;
       }
-      applyWorkspaceUpdate((current) => closePanel(current, panelId), "immediate");
+      applyWorkspaceUpdate((current) => closePanel(current, panelId), "untracked");
     },
     [applyWorkspaceUpdate, runningTerminalPanelId, showAppError],
   );
 
   const resizeWorkspaceSplit = useCallback(
     (splitId: string, sizes: number[]) => {
-      applyWorkspaceUpdate((current) => resizeSplit(current, splitId, sizes), "immediate");
+      applyWorkspaceUpdate((current) => resizeSplit(current, splitId, sizes), "untracked");
     },
     [applyWorkspaceUpdate],
   );
 
   const resetDockLayout = useCallback(() => {
-    applyWorkspaceUpdate((current) => resetWorkspaceLayout(current), "immediate");
+    applyWorkspaceUpdate((current) => resetWorkspaceLayout(current), "untracked");
   }, [applyWorkspaceUpdate]);
 
   const splitEditor = useCallback(
     (panelId: string, direction: "right" | "bottom") => {
-      applyWorkspaceUpdate((current) => splitEditorPanel(current, panelId, direction).state, "immediate");
+      applyWorkspaceUpdate((current) => splitEditorPanel(current, panelId, direction).state, "untracked");
     },
     [applyWorkspaceUpdate],
   );
 
   const setEditorActiveDocument = useCallback(
     (panelId: string, documentId: string) => {
-      applyWorkspaceUpdate((current) => setEditorPanelActiveDocument(current, panelId, documentId), "immediate");
+      applyWorkspaceUpdate((current) => setEditorPanelActiveDocument(current, panelId, documentId), "untracked");
     },
     [applyWorkspaceUpdate],
   );
@@ -718,7 +921,7 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
     (fromPanelId: string, toPanelId: string, documentId: string, targetIndex?: number) => {
       applyWorkspaceUpdate(
         (current) => moveEditorTab(current, fromPanelId, toPanelId, documentId, targetIndex),
-        "immediate",
+        "untracked",
       );
     },
     [applyWorkspaceUpdate],
@@ -726,21 +929,21 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
 
   const closeEditorDocumentTab = useCallback(
     (panelId: string, documentId: string) => {
-      applyWorkspaceUpdate((current) => closeEditorTab(current, panelId, documentId), "immediate");
+      applyWorkspaceUpdate((current) => closeEditorTab(current, panelId, documentId), "untracked");
     },
     [applyWorkspaceUpdate],
   );
 
   const updateFilesPanelSelection = useCallback(
     (panelId: string, fileName: string | undefined) => {
-      applyWorkspaceUpdate((current) => setFilesPanelSelection(current, panelId, fileName), "immediate");
+      applyWorkspaceUpdate((current) => setFilesPanelSelection(current, panelId, fileName), "untracked");
     },
     [applyWorkspaceUpdate],
   );
 
   const updateWorkspaceVirtualFiles = useCallback(
     (virtualFiles: Record<string, string[]>) => {
-      applyWorkspaceUpdate((current) => updateVirtualFiles(current, virtualFiles), "immediate");
+      applyWorkspaceUpdate((current) => updateVirtualFiles(current, virtualFiles), "untracked");
     },
     [applyWorkspaceUpdate],
   );
@@ -791,18 +994,19 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
     pendingInput,
     isRunning,
     runningTerminalPanelId,
-    saveError,
-    hasPendingSave,
+    autosaveIntervalMinutes,
+    hasUnsavedChanges,
     isSaving,
-    lastSavedAt,
+    saveError,
     appNotice,
     dismissNotice,
+    saveWorkspaceNow,
+    updateAutosaveInterval,
     setPendingInputText,
     submitPendingInput,
     cancelPendingInput: () => resolvePendingInput(null),
     compileNow,
     runNow,
-    saveWorkspaceNow,
     clearTerminal,
     selectDocument,
     handleDocumentSourceChange,

@@ -1,0 +1,9 @@
+- generic [active] [ref=e1]:
+  - alert [ref=e2]
+  - main [ref=e3]:
+    - generic [ref=e15]:
+      - complementary [ref=e16]
+      - generic [ref=e30]:
+        - paragraph [ref=e31]: Pseudocode Compiler
+        - heading "Opening the editor without blocking first paint" [level=1] [ref=e32]
+        - paragraph [ref=e33]: Loading the editor workspace…

@@ -15,7 +15,7 @@ if (isPad) {
 }
 
 const tabletManualScreenOptions = {
-  title: "Pseudocode Guidelines",
+  title: "Pseudocode Compiler Guidelines",
   presentation: "modal" as const,
 };
 
@@ -39,13 +39,13 @@ function RootNavigator() {
   const phoneManualScreenOptions =
     Platform.OS === "ios"
       ? {
-          title: "Pseudocode Guidelines",
+          title: "Pseudocode Compiler Guidelines",
           presentation: "modal" as const,
           headerRightBarButtonItems: [
             {
               type: "button" as const,
               icon: { type: "sfSymbol" as const, name: "xmark" },
-              accessibilityLabel: "Close pseudocode guidelines",
+              accessibilityLabel: "Close Pseudocode Compiler guidelines",
               tintColor: colors.text2,
               variant: "plain" as const,
               hidesSharedBackground: true,
@@ -55,7 +55,7 @@ function RootNavigator() {
           ],
         }
       : {
-          title: "Pseudocode Guidelines",
+          title: "Pseudocode Compiler Guidelines",
           presentation: "modal" as const,
         };
 

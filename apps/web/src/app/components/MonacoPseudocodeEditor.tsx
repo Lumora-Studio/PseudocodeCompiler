@@ -172,8 +172,8 @@ export function MonacoPseudocodeEditor({
 
     if (!pseudocodeLanguageRegistered) {
       pseudocodeLanguageRegistered = true;
-      monaco.languages.register({ id: "igcse-pseudocode" });
-      monaco.languages.setMonarchTokensProvider("igcse-pseudocode", {
+      monaco.languages.register({ id: "pseudocode" });
+      monaco.languages.setMonarchTokensProvider("pseudocode", {
         tokenizer: {
           root: [
             [/\/\/.*$/, "comment"],
@@ -191,7 +191,7 @@ export function MonacoPseudocodeEditor({
           ],
         },
       });
-      monaco.languages.setLanguageConfiguration("igcse-pseudocode", {
+      monaco.languages.setLanguageConfiguration("pseudocode", {
         brackets: [
           ["(", ")"],
           ["[", "]"],
@@ -213,7 +213,7 @@ export function MonacoPseudocodeEditor({
 
     if (!pseudocodeCompletionProviderRegistered) {
       pseudocodeCompletionProviderRegistered = true;
-      monaco.languages.registerCompletionItemProvider("igcse-pseudocode", {
+      monaco.languages.registerCompletionItemProvider("pseudocode", {
         provideCompletionItems(model: Monaco.editor.ITextModel, position: Monaco.Position) {
           const word = model.getWordUntilPosition(position);
           const range = {
@@ -291,7 +291,7 @@ export function MonacoPseudocodeEditor({
 
     const model = editor.getModel();
     if (model) {
-      monaco.editor.setModelLanguage(model, "igcse-pseudocode");
+      monaco.editor.setModelLanguage(model, "pseudocode");
     }
 
     const insertQuotePair = (quote: "\"" | "'") => {
@@ -471,8 +471,14 @@ export function MonacoPseudocodeEditor({
         "editorIndentGuide.background1": "#38383A",
         "editorIndentGuide.activeBackground1": "#48484A",
         "editorWidget.background": "#2C2C2E",
+        "editorWidget.border": "#48484A",
         "editorSuggestWidget.background": "#2C2C2E",
+        "editorSuggestWidget.border": "#48484A",
+        "editorSuggestWidget.foreground": "#E5E5EA",
         "editorSuggestWidget.selectedBackground": "#0A84FF30",
+        "editorSuggestWidget.selectedForeground": "#FFFFFF",
+        "editorSuggestWidget.highlightForeground": "#0A84FF",
+        "editorSuggestWidget.focusHighlightForeground": "#4DA3FF",
       },
     });
 
@@ -502,8 +508,14 @@ export function MonacoPseudocodeEditor({
         "editorIndentGuide.background1": "#E5E5E5",
         "editorIndentGuide.activeBackground1": "#D1D5DB",
         "editorWidget.background": "#FFFFFF",
+        "editorWidget.border": "#E5E5E5",
         "editorSuggestWidget.background": "#FFFFFF",
-        "editorSuggestWidget.selectedBackground": "#0B6E4F1F",
+        "editorSuggestWidget.border": "#E0E0E0",
+        "editorSuggestWidget.foreground": "#111111",
+        "editorSuggestWidget.selectedBackground": "#0B6E4F18",
+        "editorSuggestWidget.selectedForeground": "#111111",
+        "editorSuggestWidget.highlightForeground": "#0B6E4F",
+        "editorSuggestWidget.focusHighlightForeground": "#0B6E4F",
       },
     });
 
@@ -518,7 +530,7 @@ export function MonacoPseudocodeEditor({
     if (!model) {
       return;
     }
-    monacoRef.current.editor.setModelMarkers(model, "igcse-compiler", markers);
+    monacoRef.current.editor.setModelMarkers(model, "pseudocode", markers);
   }, [markers]);
 
   useEffect(() => {
@@ -533,7 +545,7 @@ export function MonacoPseudocodeEditor({
     <Editor
       key={documentKey}
       height="100%"
-      defaultLanguage="igcse-pseudocode"
+      defaultLanguage="pseudocode"
       value={value}
       onChange={(nextValue) => onChange(nextValue ?? "")}
       beforeMount={handleBeforeMount}

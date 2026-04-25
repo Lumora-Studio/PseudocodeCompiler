@@ -1,6 +1,6 @@
 {
-  "name": "@igcse/workspace",
-  "version": "0.1.9",
+  "name": "@pseudocode-compiler/workspace",
+  "version": "0.1.8",
   "private": true,
   "description": "Shared workspace model and persistence helpers for Pseudocode Compiler.",
   "main": "./src/index.ts",

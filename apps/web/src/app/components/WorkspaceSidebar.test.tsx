@@ -5,7 +5,7 @@ import {
   createDocument,
   createFolder,
   type WorkspaceState,
-} from "@igcse/workspace";
+} from "@pseudocode-compiler/workspace";
 import { WorkspaceSidebar } from "@/app/components/WorkspaceSidebar";
 
 function createWorkspaceFixture() {

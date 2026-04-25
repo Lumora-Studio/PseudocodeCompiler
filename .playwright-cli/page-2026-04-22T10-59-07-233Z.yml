@@ -1,0 +1,11 @@
+- generic [active] [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e7] [cursor=pointer]:
+    - img [ref=e8]
+  - alert [ref=e11]
+  - main [ref=e12]:
+    - generic [ref=e24]:
+      - complementary [ref=e25]
+      - generic [ref=e39]:
+        - paragraph [ref=e40]: Pseudocode Compiler
+        - heading "Opening the editor without blocking first paint" [level=1] [ref=e41]
+        - paragraph [ref=e42]: Loading the editor workspace…

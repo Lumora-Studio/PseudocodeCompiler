@@ -1,0 +1,9 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e4]:
+      - paragraph [ref=e5]: Workspace
+      - heading "Loading workspace…" [level=1] [ref=e6]
+      - paragraph [ref=e7]: Preparing the editor layout and runtime panels.
+      - generic [ref=e8]: Signed Out
+      - paragraph [ref=e10]: Guest session. Files are cleared when this session ends.
+  - alert [ref=e11]
