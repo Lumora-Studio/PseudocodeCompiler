@@ -73,7 +73,7 @@ interface SelectionModifierState {
 const CONTEXT_MENU_WIDTH = 248;
 const CONTEXT_MENU_HEIGHT = 320;
 const CONTEXT_MENU_MARGIN = 14;
-const EXPLORER_RELEASE_LABEL = `alpha - version ${packageJson.version}`;
+const EXPLORER_RELEASE_LABEL = `${packageJson.version}-Preveiw`;
 
 const contextMenuButtonClassName =
   "block w-full appearance-none rounded-lg border-0 bg-transparent px-3 py-2 text-left text-sm transition hover:bg-[var(--hover)] disabled:cursor-not-allowed";
