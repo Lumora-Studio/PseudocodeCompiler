@@ -258,17 +258,19 @@ describe("HomePage workspace flow", () => {
     expect(saveWorkspaceMock).toHaveBeenCalled();
   });
 
-  it("creates the first file from the starter panel and opens the editor", async () => {
+  it("creates the first desktop file from the starter dialog and opens the editor", async () => {
+    setDesktopRuntime();
     loadWorkspaceMock.mockResolvedValue(createEmptyWorkspace("2026-03-15T00:00:00.000Z"));
     render(<HomePage />);
 
     expect(await screen.findByText("Welcome to Pseudocode Compiler")).toBeInTheDocument();
 
-    Object.defineProperty(window, "prompt", {
-      configurable: true,
-      value: vi.fn(() => "main.pseudo"),
-    });
     fireEvent.click(screen.getByRole("button", { name: "Create New File" }));
+    const dialog = await screen.findByRole("dialog", { name: "Create New File" });
+    fireEvent.change(within(dialog).getByLabelText("File name"), {
+      target: { value: "main.pseudo" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create File" }));
 
     await waitFor(() => {
       expect(screen.getByRole("textbox", { name: "Mock editor" })).toHaveValue("");

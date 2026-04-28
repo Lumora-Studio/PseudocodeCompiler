@@ -237,6 +237,8 @@ export default function HomePage() {
   const [showAccountMenu, setShowAccountMenu] = useState(false);
   const [showFlowchart, setShowFlowchart] = useState(false);
   const [showManual, setShowManual] = useState(false);
+  const [showCreateFileDialog, setShowCreateFileDialog] = useState(false);
+  const [createFileName, setCreateFileName] = useState("main.pseudo");
   const [showFlowchartPrompt, setShowFlowchartPrompt] = useState(false);
   const [flowchartFileName, setFlowchartFileName] = useState("");
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => loadThemeMode());
@@ -245,16 +247,17 @@ export default function HomePage() {
   );
 
   useEffect(() => {
-    if (!showManual && !showFlowchartPrompt) return;
+    if (!showManual && !showFlowchartPrompt && !showCreateFileDialog) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        if (showCreateFileDialog) setShowCreateFileDialog(false);
         if (showFlowchartPrompt) setShowFlowchartPrompt(false);
         if (showManual) setShowManual(false);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showManual, showFlowchartPrompt]);
+  }, [showManual, showFlowchartPrompt, showCreateFileDialog]);
   const [systemTheme, setSystemTheme] = useState<"dark" | "light">(() => getSystemTheme());
   const [viewportSize, setViewportSize] = useState(() => ({
     width: typeof window === "undefined" ? 1280 : window.innerWidth,
@@ -265,6 +268,7 @@ export default function HomePage() {
   );
 
   const renameInputRef = useRef<HTMLInputElement | null>(null);
+  const createFileInputRef = useRef<HTMLInputElement | null>(null);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
   const desktopTerminalScrollRef = useRef<HTMLDivElement | null>(null);
   const touchOutputScrollRef = useRef<HTMLDivElement | null>(null);
@@ -317,6 +321,13 @@ export default function HomePage() {
       renameInputRef.current?.select();
     }
   }, [renameDialog]);
+
+  useEffect(() => {
+    if (showCreateFileDialog) {
+      createFileInputRef.current?.focus();
+      createFileInputRef.current?.select();
+    }
+  }, [showCreateFileDialog]);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
@@ -973,6 +984,58 @@ export default function HomePage() {
       </div>
     ) : null;
 
+  const renderCreateFileDialog = () =>
+    showCreateFileDialog ? (
+      <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-[var(--overlay-strong)] p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="create-file-dialog-title"
+          className="w-full max-w-sm rounded-xl border border-[var(--separator)] bg-[var(--surface)] p-6 shadow-[var(--shadow-modal)]"
+        >
+          <div className="flex items-center gap-3 text-[var(--text3)]">
+            <FilePlus size={20} />
+            <span className="text-xs font-semibold uppercase tracking-[0.16em]">Explorer</span>
+          </div>
+          <h2
+            id="create-file-dialog-title"
+            className="mt-3 text-xl font-semibold text-[var(--text)]"
+          >
+            Create New File
+          </h2>
+          <form className="mt-5 space-y-4" onSubmit={submitCreateFile}>
+            <label className="block">
+              <span className="mb-2 block text-sm text-[var(--text2)]">File name</span>
+              <input
+                ref={createFileInputRef}
+                aria-label="File name"
+                value={createFileName}
+                onChange={(event) => setCreateFileName(event.target.value)}
+                placeholder="main.pseudo"
+                className="h-10 w-full rounded-xl border border-[var(--separator)] bg-[var(--bg)] px-3 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
+              />
+            </label>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
+                onClick={closeCreateFileDialog}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+                disabled={!createFileName.trim()}
+              >
+                Create File
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    ) : null;
+
   const renderSignInPromptDialog = () =>
     showSignInPrompt ? (
       <div className="fixed inset-0 z-[var(--z-tooltip)] flex items-center justify-center bg-[var(--overlay)] p-4">
@@ -1040,12 +1103,7 @@ export default function HomePage() {
             <button
               type="button"
               className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-5 text-sm font-semibold text-white transition hover:brightness-110"
-              onClick={() => {
-                const name = window.prompt("Enter file name:", "main.pseudo");
-                if (name && name.trim()) {
-                  createDocumentInWorkspace(undefined, { name: name.trim() });
-                }
-              }}
+              onClick={openCreateFileDialog}
             >
               <FilePlus size={16} />
               Create New File
@@ -1171,6 +1229,24 @@ export default function HomePage() {
           ? `Delete "${workspace.nodes[ids[0]].name}"?`
           : `Delete ${ids.length} selected items?`,
     });
+  };
+
+  const openCreateFileDialog = () => {
+    setCreateFileName("main.pseudo");
+    setShowCreateFileDialog(true);
+  };
+
+  const closeCreateFileDialog = () => {
+    setShowCreateFileDialog(false);
+    setCreateFileName("main.pseudo");
+  };
+
+  const submitCreateFile = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const name = createFileName.trim();
+    if (!name) return;
+    createDocumentInWorkspace(undefined, { name });
+    closeCreateFileDialog();
   };
 
   const submitRename = (event: FormEvent<HTMLFormElement>) => {
@@ -1661,6 +1737,7 @@ export default function HomePage() {
 
           {renderSignInPromptDialog()}
           {renderManualModal()}
+          {renderCreateFileDialog()}
           {renderFlowchartPromptDialog()}
         </div>
       </main>
@@ -2169,6 +2246,7 @@ export default function HomePage() {
 
       {renderSignInPromptDialog()}
       {renderManualModal()}
+      {renderCreateFileDialog()}
       {renderFlowchartPromptDialog()}
     </main>
   );
