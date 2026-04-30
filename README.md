@@ -36,7 +36,7 @@ Monorepo for a strict pseudocode toolchain and editor suite. The project include
 ## Prerequisites
 
 - Node.js 20+ recommended
-- npm 10+ recommended
+- pnpm 10+ recommended
 
 Optional, depending on what you want to run:
 
@@ -48,13 +48,13 @@ Optional, depending on what you want to run:
 Install dependencies from the repository root:
 
 ```bash
-npm install
+pnpm install
 ```
 
 Start the main desktop development workflow:
 
 ```bash
-npm run dev
+pnpm dev
 ```
 
 That launches:
@@ -65,7 +65,7 @@ That launches:
 If you only want the browser app:
 
 ```bash
-npm run dev:web
+pnpm dev:web
 ```
 
 Open the web app at [http://localhost:3000](http://localhost:3000).
@@ -73,8 +73,8 @@ Open the web app at [http://localhost:3000](http://localhost:3000).
 If you want the Electron shell without keeping the app attached to the launch terminal, start the web server first and then open the desktop window separately:
 
 ```bash
-npm run dev:web
-npm run open:desktop
+pnpm dev:web
+pnpm open:desktop
 ```
 
 ## Root Commands
@@ -82,15 +82,15 @@ npm run open:desktop
 Run these from the repository root:
 
 ```bash
-npm run dev             # Web + Electron desktop shell
-npm run dev:web         # Next.js only
-npm run build           # Production web build
-npm run test           # All workspace tests that define test scripts
-npm run test:compiler   # Compiler tests only
-npm run test:web        # Web app tests only
-npm run typecheck       # Type-check all workspaces that support it
-npm run typecheck:mobile
-npm run lint
+pnpm dev             # Web + Electron desktop shell
+pnpm dev:web         # Next.js only
+pnpm build           # Production web build
+pnpm test            # All workspace tests that define test scripts
+pnpm test:compiler   # Compiler tests only
+pnpm test:web        # Web app tests only
+pnpm typecheck       # Type-check all workspaces that support it
+pnpm typecheck:mobile
+pnpm lint
 ```
 
 ## App-Specific Commands
@@ -98,33 +98,33 @@ npm run lint
 ### Web / Desktop
 
 ```bash
-npm run dev --workspace=@igcse/web
-npm run dev:web --workspace=@igcse/web
-npm run dev:electron --workspace=@igcse/web
-npm run build --workspace=@igcse/web
-npm run dist --workspace=@igcse/web   # signed macOS DMG build
-npm run dist:unsigned --workspace=@igcse/web   # unsigned macOS DMG build
-npm run pack --workspace=@igcse/web   # unpacked Electron app
+pnpm --filter @igcse/web dev
+pnpm --filter @igcse/web dev:web
+pnpm --filter @igcse/web dev:electron
+pnpm --filter @igcse/web build
+pnpm --filter @igcse/web dist   # signed macOS DMG build
+pnpm --filter @igcse/web dist:unsigned   # unsigned macOS DMG build
+pnpm --filter @igcse/web pack   # unpacked Electron app
 ```
 
 ### macOS Packaging
 
-- `npm run pack --workspace=@igcse/web` is the local testing path. It creates an unpacked `.app` in `apps/web/dist/mac-arm64/`.
-- `npm run dist --workspace=@igcse/web` is for distribution. It now requires a `Developer ID Application` certificate in your macOS keychain.
-- `npm run dist:unsigned --workspace=@igcse/web` creates a DMG without Developer ID signing. Use this only for manual/local sharing where Gatekeeper warnings are acceptable.
+- `pnpm --filter @igcse/web pack` is the local testing path. It creates an unpacked `.app` in `apps/web/dist/mac-arm64/`.
+- `pnpm --filter @igcse/web dist` is for distribution. It now requires a `Developer ID Application` certificate in your macOS keychain.
+- `pnpm --filter @igcse/web dist:unsigned` creates a DMG without Developer ID signing. Use this only for manual/local sharing where Gatekeeper warnings are acceptable.
 - Without that certificate, Electron can only ad hoc sign the bundle. The app may still start from Terminal, but Finder and Gatekeeper will reject the packaged DMG.
 
 ### Mobile
 
 ```bash
-npm run start --workspace=@igcse/mobile
-npm run ios --workspace=@igcse/mobile
-npm run ios:ipad26 --workspace=@igcse/mobile
-npm run android --workspace=@igcse/mobile
-npm run web --workspace=@igcse/mobile
-npm run ios:preview --workspace=@igcse/mobile
-npm run ios:production --workspace=@igcse/mobile
-npm run ios:testflight --workspace=@igcse/mobile
+pnpm --filter @igcse/mobile start
+pnpm --filter @igcse/mobile ios
+pnpm --filter @igcse/mobile ios:ipad26
+pnpm --filter @igcse/mobile android
+pnpm --filter @igcse/mobile web
+pnpm --filter @igcse/mobile ios:preview
+pnpm --filter @igcse/mobile ios:production
+pnpm --filter @igcse/mobile ios:testflight
 ```
 
 ## Packages
@@ -195,7 +195,7 @@ Current test coverage in the repo includes:
 Run everything:
 
 ```bash
-npm run test
+pnpm test
 ```
 
 ## License

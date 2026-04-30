@@ -8,15 +8,15 @@
     "ios:ipad26": "bash ./scripts/start-ipados26.sh",
     "ios:preview": "eas build --platform ios --profile preview",
     "ios:production": "eas build --platform ios --profile production",
-    "ios:testflight": "npx testflight",
+    "ios:testflight": "pnpm dlx testflight",
     "android": "expo run:android",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@expo/metro-runtime": "~55.0.6",
-    "@igcse/compiler": "*",
-    "@igcse/workspace": "*",
+    "@igcse/compiler": "workspace:*",
+    "@igcse/workspace": "workspace:*",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-navigation/native": "^7.1.33",
     "@react-navigation/stack": "^7.8.5",

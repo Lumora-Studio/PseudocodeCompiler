@@ -4,30 +4,43 @@
   "private": true,
   "description": "Pseudocode Compiler — monorepo with shared compiler, web/desktop, and mobile apps.",
   "author": "Alex",
-  "workspaces": [
-    "packages/*",
-    "apps/*"
-  ],
+  "packageManager": "pnpm@10.29.3",
   "scripts": {
-    "dev": "npm run dev --workspace=@igcse/web",
-    "dev:web": "npm run dev:web --workspace=@igcse/web",
-    "open:desktop": "npm run open:electron --workspace=@igcse/web",
-    "dist": "npm run dist --workspace=@igcse/web",
-    "dist:unsigned": "npm run dist:unsigned --workspace=@igcse/web",
-    "pack": "npm run pack --workspace=@igcse/web",
-    "ios:ipad26": "npm run ios:ipad26 --workspace=@igcse/mobile",
-    "ios:preview": "npm run ios:preview --workspace=@igcse/mobile",
-    "ios:production": "npm run ios:production --workspace=@igcse/mobile",
-    "ios:testflight": "npm run ios:testflight --workspace=@igcse/mobile",
-    "build": "npm run build --workspace=@igcse/web",
-    "test": "npm run test --workspaces --if-present",
-    "test:compiler": "npm run test --workspace=@igcse/compiler",
-    "test:web": "npm run test --workspace=@igcse/web",
-    "typecheck:mobile": "npm run typecheck --workspace=@igcse/mobile",
-    "typecheck": "npm run typecheck --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present"
+    "dev": "pnpm --filter @igcse/web dev",
+    "dev:web": "pnpm --filter @igcse/web dev:web",
+    "open:desktop": "pnpm --filter @igcse/web open:electron",
+    "dist": "pnpm --filter @igcse/web dist",
+    "dist:unsigned": "pnpm --filter @igcse/web dist:unsigned",
+    "pack": "pnpm --filter @igcse/web pack",
+    "ios:ipad26": "pnpm --filter @igcse/mobile ios:ipad26",
+    "ios:preview": "pnpm --filter @igcse/mobile ios:preview",
+    "ios:production": "pnpm --filter @igcse/mobile ios:production",
+    "ios:testflight": "pnpm --filter @igcse/mobile ios:testflight",
+    "build": "pnpm --filter @igcse/web build",
+    "test": "pnpm -r --if-present run test",
+    "test:compiler": "pnpm --filter @igcse/compiler test",
+    "test:web": "pnpm --filter @igcse/web test",
+    "typecheck:mobile": "pnpm --filter @igcse/mobile typecheck",
+    "typecheck": "pnpm -r --if-present run typecheck",
+    "lint": "pnpm -r --if-present run lint"
   },
   "devDependencies": {
     "convex": "^1.36.1"
+  },
+  "pnpm": {
+    "overrides": {
+      "minimatch@^3.0.0": "3.1.4",
+      "minimatch@^9.0.0": "9.0.7",
+      "minimatch@^10.0.0": "10.2.3",
+      "rollup": "^4.59.0"
+    },
+    "onlyBuiltDependencies": [
+      "dtrace-provider",
+      "electron",
+      "electron-winstaller",
+      "esbuild",
+      "sharp",
+      "unrs-resolver"
+    ]
   }
 }

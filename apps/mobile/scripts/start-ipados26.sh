@@ -77,4 +77,4 @@ if [[ "${SKIP_EXPO_START:-0}" == "1" ]]; then
 fi
 
 echo "Launching Expo on iPad simulator..."
-npm run ios
+pnpm run ios

@@ -6,7 +6,7 @@
   "author": "Alex",
   "main": "electron/main.cjs",
   "scripts": {
-    "dev": "concurrently -k \"npm:dev:web\" \"npm:dev:electron\"",
+    "dev": "concurrently -k \"pnpm run dev:web\" \"pnpm run dev:electron\"",
     "dev:web": "cross-env NEXT_PUBLIC_RESET_WORKSPACE_ON_DEV=1 next dev",
     "dev:electron": "wait-on tcp:3000 && cross-env ELECTRON_START_URL=http://localhost:3000 NEXT_PUBLIC_RESET_WORKSPACE_ON_DEV=1 electron .",
     "open:electron": "wait-on tcp:3000 && node ./scripts/open-electron.cjs",
@@ -18,13 +18,13 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "dist": "npm run build:electron-web && node scripts/check-macos-signing.cjs && electron-builder --mac dmg",
-    "dist:unsigned": "npm run build:electron-web && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg",
-    "pack": "npm run build:electron-web && electron-builder --dir"
+    "dist": "pnpm run build:electron-web && node scripts/check-macos-signing.cjs && electron-builder --mac dmg",
+    "dist:unsigned": "pnpm run build:electron-web && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg",
+    "pack": "pnpm run build:electron-web && electron-builder --dir"
   },
   "dependencies": {
-    "@igcse/compiler": "*",
-    "@igcse/workspace": "*",
+    "@igcse/compiler": "workspace:*",
+    "@igcse/workspace": "workspace:*",
     "@monaco-editor/react": "^4.7.0",
     "@vercel/speed-insights": "^2.0.0",
     "@workos-inc/authkit-nextjs": "^4.0.1",
@@ -58,17 +58,11 @@
     "vitest": "^4.0.18",
     "wait-on": "^9.0.3"
   },
-  "overrides": {
-    "minimatch@^3.0.0": "3.1.4",
-    "minimatch@^9.0.0": "9.0.7",
-    "minimatch@^10.0.0": "10.2.3",
-    "rollup": "^4.59.0"
-  },
   "build": {
     "appId": "com.alex.igcsepseudocodecompiler",
     "productName": "Pseudocode Compiler",
     "electronVersion": "37.10.3",
-    "electronDist": "../../node_modules/electron/dist",
+    "electronDist": "node_modules/electron/dist",
     "files": [
       {
         "from": "electron",
