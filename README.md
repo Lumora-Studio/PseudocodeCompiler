@@ -4,12 +4,22 @@
 
 <h1 align="center">Pseudocode Compiler</h1>
 
-Monorepo for a strict pseudocode toolchain and editor suite. The project includes:
+Monorepo for a strict pseudocode toolchain and editor suite. The project ships in two product families:
+
+1. **App**: the native iOS and iPadOS app built with Expo / React Native.
+2. **Web**: the Next.js app, which has two different runtime forms:
+   - **Desktop app**: an Electron-packaged local app built from `apps/web`.
+   - **Browser app**: the web app users open in a browser, including the Vercel deployment.
+
+The desktop app and browser app share most editor UI code, but they are not the same product at runtime. The desktop app is a local app and saves locally. The browser app deployed on Vercel is the only version that uses Clerk authentication and the Convex cloud database for workspace saving. Local web development also saves locally.
+
+The repository includes:
 
 - a shared compiler package that tokenizes, parses, validates, and transpiles pseudocode to Python
-- a Next.js app that serves as the main browser UI and the desktop shell source for Electron
+- a Next.js app that serves as the local browser UI, Vercel browser UI, and Electron desktop app source
 - an Expo React Native app for mobile and iPad layouts
 - a shared workspace package for file trees, panel state, layout state, and persistence
+- Convex functions for browser cloud workspace sync
 
 ## What It Does
 
@@ -25,7 +35,8 @@ Monorepo for a strict pseudocode toolchain and editor suite. The project include
 .
 ├── apps
 │   ├── mobile      # Expo / React Native mobile app
-│   └── web         # Next.js app + Electron desktop packaging
+│   └── web         # Next.js web app + Electron desktop packaging
+├── convex          # Convex schema/functions for browser cloud sync
 ├── packages
 │   ├── compiler    # Shared compiler core
 │   └── workspace   # Shared workspace model and persistence helpers
@@ -42,6 +53,43 @@ Optional, depending on what you want to run:
 
 - Xcode / iOS Simulator for local iOS work
 - `eas-cli` for Expo cloud builds
+- Vercel CLI for preview deployments and environment variable management
+
+## Product Variants and Persistence
+
+The runtime intentionally treats each product variant differently:
+
+| Variant | Runtime | Persistence | Authentication |
+| --- | --- | --- | --- |
+| iOS / iPadOS app | `apps/mobile` | Local app storage | None |
+| Desktop app | Electron package built from `apps/web` with `BUILD_TARGET=electron` | Local desktop storage | None |
+| Local browser app | `http://localhost`, `127.0.0.1`, or `::1` | Browser local storage | None |
+| Vercel browser version | Deployed web host | Convex cloud sync | Clerk required |
+
+On deployed web hosts, signed-out users can edit in memory but must sign in before saving to Convex. User profile and account UI are handled by Clerk.
+
+### Desktop App vs Browser App
+
+The desktop app is the Electron-packaged version of `apps/web`. It should behave like an installed local developer tool:
+
+- no Clerk sign-in buttons
+- no Convex cloud sync
+- local workspace persistence
+- built with `BUILD_TARGET=electron`
+
+The browser app is the web version of `apps/web`. It has two modes:
+
+- **Local browser app**: `localhost` development, local browser persistence, no auth requirement.
+- **Deployed browser app**: Vercel preview/production URLs, Clerk sign-in required for saving, Convex workspace sync.
+
+When changing persistence or auth behavior, preserve this distinction. Do not make the desktop app depend on Clerk or Convex, and do not let the deployed browser app silently save to local storage instead of requiring sign-in.
+
+Do not reintroduce WorkOS. The browser auth path uses:
+
+- `@clerk/nextjs`
+- `clerkMiddleware()` in `apps/web/src/proxy.ts`
+- `<ClerkProvider>` via `apps/web/src/lib/auth-components.tsx`
+- `await auth()` from `@clerk/nextjs/server` in route handlers
 
 ## Getting Started
 
@@ -70,6 +118,8 @@ pnpm dev:web
 
 Open the web app at [http://localhost:3000](http://localhost:3000).
 
+Local web uses local persistence by design. To test the deployed-browser behavior locally, run a production build/start with Vercel-like environment values.
+
 If you want the Electron shell without keeping the app attached to the launch terminal, start the web server first and then open the desktop window separately:
 
 ```bash
@@ -93,6 +143,15 @@ pnpm typecheck:mobile
 pnpm lint
 ```
 
+Common verification commands for web changes:
+
+```bash
+pnpm --filter @igcse/web typecheck
+pnpm --filter @igcse/web test
+pnpm --filter @igcse/web build
+pnpm --filter @igcse/web lint
+```
+
 ## App-Specific Commands
 
 ### Web / Desktop
@@ -106,6 +165,50 @@ pnpm --filter @igcse/web dist   # signed macOS DMG build
 pnpm --filter @igcse/web dist:unsigned   # unsigned macOS DMG build
 pnpm --filter @igcse/web pack   # unpacked Electron app
 ```
+
+### Browser Auth and Cloud Sync
+
+The Vercel browser version requires these environment variables:
+
+```bash
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=...
+CLERK_SECRET_KEY=...
+NEXT_PUBLIC_CONVEX_URL=...
+WORKSPACE_SYNC_SECRET=...
+```
+
+`CONVEX_URL` may be used by server routes as a fallback for `NEXT_PUBLIC_CONVEX_URL`.
+
+Set Clerk and Convex values in Vercel Preview and Production as needed:
+
+```bash
+vercel env ls preview
+vercel env add NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY preview
+vercel env add CLERK_SECRET_KEY preview
+```
+
+The app no longer uses WorkOS. Remove stale WorkOS env vars from Vercel when they are no longer needed by older deployments.
+
+### Vercel Deployment
+
+The root `vercel.json` builds the web app:
+
+```json
+{
+  "framework": "nextjs",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "buildCommand": "pnpm --filter @igcse/web build",
+  "outputDirectory": "apps/web/.next"
+}
+```
+
+Deploy a preview from the repository root:
+
+```bash
+vercel deploy --yes --force
+```
+
+After changing environment variables, redeploy so the build and runtime receive the new values.
 
 ### macOS Packaging
 

@@ -11,14 +11,14 @@ function requireServerSecret(serverSecret: string) {
 export const getCurrent = queryGeneric({
   args: {
     serverSecret: v.string(),
-    workosUserId: v.string(),
+    clerkUserId: v.string(),
   },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret);
 
     const workspace = await ctx.db
       .query("workspaces")
-      .withIndex("by_workos_user", (query) => query.eq("workosUserId", args.workosUserId))
+      .withIndex("by_clerk_user", (query) => query.eq("clerkUserId", args.clerkUserId))
       .unique();
 
     return workspace?.workspace ?? null;
@@ -29,7 +29,7 @@ export const saveCurrent = mutationGeneric({
   args: {
     serverSecret: v.string(),
     user: v.object({
-      workosUserId: v.string(),
+      clerkUserId: v.string(),
       email: v.string(),
       firstName: v.union(v.string(), v.null()),
       lastName: v.union(v.string(), v.null()),
@@ -42,7 +42,7 @@ export const saveCurrent = mutationGeneric({
     const now = Date.now();
     const existingUser = await ctx.db
       .query("users")
-      .withIndex("by_workos_user", (query) => query.eq("workosUserId", args.user.workosUserId))
+      .withIndex("by_clerk_user", (query) => query.eq("clerkUserId", args.user.clerkUserId))
       .unique();
 
     if (existingUser) {
@@ -61,7 +61,7 @@ export const saveCurrent = mutationGeneric({
 
     const existingWorkspace = await ctx.db
       .query("workspaces")
-      .withIndex("by_workos_user", (query) => query.eq("workosUserId", args.user.workosUserId))
+      .withIndex("by_clerk_user", (query) => query.eq("clerkUserId", args.user.clerkUserId))
       .unique();
 
     if (existingWorkspace) {
@@ -73,7 +73,7 @@ export const saveCurrent = mutationGeneric({
     }
 
     return await ctx.db.insert("workspaces", {
-      workosUserId: args.user.workosUserId,
+      clerkUserId: args.user.clerkUserId,
       workspace: args.workspace,
       updatedAt: now,
     });

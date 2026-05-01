@@ -3,13 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultWorkspace, createDocument, createEmptyWorkspace, createFolder, getChildNodes, setActiveDocument, type WorkspaceState } from "@igcse/workspace";
 import type { WorkspacePersistenceMode } from "@/lib/platform";
 
-const { loadWorkspaceMock, saveWorkspaceMock, compilePseudocodeMock, runMock, routerPushMock, signOutMock, authState } = vi.hoisted(() => ({
+const { loadWorkspaceMock, saveWorkspaceMock, compilePseudocodeMock, runMock, authState } = vi.hoisted(() => ({
   loadWorkspaceMock: vi.fn<(_sampleSource: string, options?: { mode?: WorkspacePersistenceMode }) => Promise<WorkspaceState>>(),
   saveWorkspaceMock: vi.fn<(state: WorkspaceState, options?: { mode?: WorkspacePersistenceMode }) => Promise<void>>(),
   compilePseudocodeMock: vi.fn(),
   runMock: vi.fn(),
-  routerPushMock: vi.fn(),
-  signOutMock: vi.fn(),
   authState: {
     user: null as null | {
       id: string;
@@ -31,17 +29,22 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({
-    push: routerPushMock,
-  }),
-}));
-
-vi.mock("@workos-inc/authkit-nextjs/components", () => ({
+vi.mock("@/lib/auth-components", () => ({
+  ClerkProvider: ({ children }: { children: React.ReactNode }) => children,
+  Show: ({ children, when }: { children: React.ReactNode; when: "signed-in" | "signed-out" }) => {
+    const signedIn = Boolean(authState.user);
+    return (when === "signed-in" && signedIn) || (when === "signed-out" && !signedIn)
+      ? children
+      : null;
+  },
+  isCloudAuthConfigured: () => true,
+  SignInButton: ({ children }: { children: React.ReactNode }) => children,
+  SignUpButton: ({ children }: { children: React.ReactNode }) => children,
+  UserButton: () => <button type="button" aria-label="User profile" />,
   useAuth: () => ({
-    user: authState.user,
-    loading: authState.loading,
-    signOut: signOutMock,
+    isLoaded: !authState.loading,
+    isSignedIn: Boolean(authState.user),
+    userId: authState.user?.id ?? null,
   }),
 }));
 
@@ -122,6 +125,20 @@ function setDesktopRuntime() {
   });
 }
 
+function setDeployedBrowserRuntime() {
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    value: new URL("https://pseudocode-compiler-preview.vercel.app/"),
+  });
+}
+
+function setLocalBrowserRuntime() {
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    value: new URL("http://localhost:3000/"),
+  });
+}
+
 function createDataTransferMock() {
   const store = new Map<string, string>();
 
@@ -190,12 +207,11 @@ describe("HomePage workspace flow", () => {
   });
 
   beforeEach(() => {
+    setDeployedBrowserRuntime();
     loadWorkspaceMock.mockReset();
     saveWorkspaceMock.mockReset();
     compilePseudocodeMock.mockReset();
     runMock.mockReset();
-    routerPushMock.mockReset();
-    signOutMock.mockReset();
     authState.user = {
       id: "user_123",
       email: "alex@example.com",
@@ -706,22 +722,22 @@ describe("HomePage workspace flow", () => {
     expect(event.defaultPrevented).toBe(false);
   });
 
-  it("shows a direct sign-in link and asks for sign-in before cloud saving", async () => {
+  it("shows Clerk sign-in controls and asks for sign-in before cloud saving", async () => {
     authState.user = null;
     loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
     render(<HomePage />);
 
     await screen.findByRole("textbox", { name: "Mock editor" });
     expect(loadWorkspaceMock).toHaveBeenCalledWith(expect.any(String), { mode: "memory" });
-    const signInLink = screen.getByRole("link", { name: "Sign in" });
-    expect(signInLink).toHaveAttribute("href", "/login");
-    expect(signInLink).toHaveClass("bg-[var(--accent)]", "text-white");
+    const signInButton = screen.getByRole("button", { name: "Log In" });
+    expect(signInButton).toHaveClass("bg-[var(--accent)]", "text-white");
+    expect(screen.queryByText(/Need an account/i)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Save workspace" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Sign in to save" });
     expect(dialog).toBeInTheDocument();
-    expect(within(dialog).getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/login");
+    expect(within(dialog).getByRole("button", { name: "Log In" })).toBeInTheDocument();
     expect(saveWorkspaceMock).not.toHaveBeenCalled();
   });
 
@@ -733,7 +749,24 @@ describe("HomePage workspace flow", () => {
 
     await screen.findByRole("textbox", { name: "Mock editor" });
     expect(loadWorkspaceMock).toHaveBeenCalledWith(expect.any(String), { mode: "local" });
-    expect(screen.queryByRole("link", { name: "Sign in" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Log In" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save workspace" }));
+
+    await waitFor(() => {
+      expect(saveWorkspaceMock).toHaveBeenCalledWith(expect.anything(), { mode: "local" });
+    });
+  });
+
+  it("saves locally on localhost without showing browser sign-in controls", async () => {
+    authState.user = null;
+    setLocalBrowserRuntime();
+    loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
+    render(<HomePage />);
+
+    await screen.findByRole("textbox", { name: "Mock editor" });
+    expect(loadWorkspaceMock).toHaveBeenCalledWith(expect.any(String), { mode: "local" });
+    expect(screen.queryByRole("button", { name: "Log In" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Save workspace" }));
 
@@ -759,12 +792,6 @@ describe("HomePage workspace flow", () => {
       expect(saveWorkspaceMock).toHaveBeenCalledWith(expect.anything(), { mode: "cloud" });
     });
 
-    const accountButton = screen.getByRole("button", { name: "Account menu for Alex" });
-    expect(accountButton).toBeInTheDocument();
-    fireEvent.click(accountButton);
-
-    expect(screen.getByRole("menu", { name: "Account menu" })).toBeInTheDocument();
-    expect(screen.getByText("Alex")).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Sign out" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "User profile" })).toBeInTheDocument();
   });
 });

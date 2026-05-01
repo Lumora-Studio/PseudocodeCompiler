@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
-import { withAuth } from "@workos-inc/authkit-nextjs";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../../../../../convex/_generated/api";
 
 const isElectronBuild = process.env.BUILD_TARGET === "electron";
+const hasClerkServerConfig = Boolean(
+  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY,
+);
+const shouldUseCloudWorkspaceSync = !isElectronBuild && hasClerkServerConfig;
 
 function getConvexClient() {
   const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL ?? process.env.CONVEX_URL;
@@ -28,10 +32,18 @@ export async function GET() {
     return NextResponse.json({ workspace: null }, { status: 404 });
   }
 
-  const auth = await withAuth({ ensureSignedIn: true });
+  if (!shouldUseCloudWorkspaceSync) {
+    return NextResponse.json({ error: "Cloud workspace sync is not configured." }, { status: 503 });
+  }
+
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const workspace = await getConvexClient().query(api.workspaces.getCurrent, {
     serverSecret: getWorkspaceSyncSecret(),
-    workosUserId: auth.user.id,
+    clerkUserId: userId,
   });
 
   return NextResponse.json({ workspace });
@@ -45,20 +57,36 @@ export async function PUT(request: Request) {
     );
   }
 
-  const auth = await withAuth({ ensureSignedIn: true });
+  if (!shouldUseCloudWorkspaceSync) {
+    return NextResponse.json({ error: "Cloud workspace sync is not configured." }, { status: 503 });
+  }
+
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const body = (await request.json()) as { workspace?: unknown };
 
   if (!("workspace" in body)) {
     return NextResponse.json({ error: "Missing workspace payload." }, { status: 400 });
   }
 
+  const clerk = await clerkClient();
+  const user = await clerk.users.getUser(userId);
+  const primaryEmail =
+    user.emailAddresses.find((email) => email.id === user.primaryEmailAddressId)
+      ?.emailAddress ??
+    user.emailAddresses[0]?.emailAddress ??
+    "";
+
   await getConvexClient().mutation(api.workspaces.saveCurrent, {
     serverSecret: getWorkspaceSyncSecret(),
     user: {
-      workosUserId: auth.user.id,
-      email: auth.user.email,
-      firstName: auth.user.firstName ?? null,
-      lastName: auth.user.lastName ?? null,
+      clerkUserId: userId,
+      email: primaryEmail,
+      firstName: user.firstName,
+      lastName: user.lastName,
     },
     workspace: body.workspace,
   });

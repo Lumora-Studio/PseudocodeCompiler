@@ -11,14 +11,11 @@ import {
   useRef,
   useState,
 } from "react";
-import { useRouter } from "next/navigation";
-import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import {
   BookOpen,
   ChevronLeft,
   ChevronUp,
   Code,
-  Cloud,
   CloudOff,
   Ellipsis,
   FileCode,
@@ -26,14 +23,12 @@ import {
   Folder,
   GitBranch,
   LogIn,
-  LogOut,
   PanelLeft,
   Play,
   Save,
   Settings,
   Terminal,
   Trash2,
-  UserRound,
   X,
 } from "lucide-react";
 import {
@@ -46,6 +41,12 @@ import ManualContent from "@/app/manual/ManualContent";
 import { MonacoPseudocodeEditor } from "@/app/components/MonacoPseudocodeEditor";
 import { WorkspaceSidebar } from "@/app/components/WorkspaceSidebar";
 import { useWorkspaceSession } from "@/app/hooks/useWorkspaceSession";
+import {
+  Show,
+  SignInButton,
+  UserButton,
+  useAuth,
+} from "@/lib/auth-components";
 import { isAppleTouchDevice } from "@/lib/appleTouch";
 import {
   getClientAppPlatform,
@@ -169,13 +170,13 @@ function saveFlowchartModeEnabled(enabled: boolean): void {
 /* ── component ── */
 
 export default function HomePage() {
-  const router = useRouter();
-  const { user, loading: authLoading, signOut } = useAuth();
+  const { isLoaded: authLoaded, isSignedIn } = useAuth();
+  const authLoading = !authLoaded;
   const [appPlatform] = useState(() => getClientAppPlatform());
   const cloudSavingRequired = platformUsesCloudSaving(appPlatform);
   const workspacePersistenceMode = getWorkspacePersistenceMode({
     platform: appPlatform,
-    signedIn: Boolean(user),
+    signedIn: Boolean(isSignedIn),
   });
   const canSaveWorkspace = workspacePersistenceMode !== "memory";
   const isDesktopShell = appPlatform === "desktop";
@@ -234,7 +235,6 @@ export default function HomePage() {
   const [touchOutputVisible, setTouchOutputVisible] = useState(true);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [showSignInPrompt, setShowSignInPrompt] = useState(false);
-  const [showAccountMenu, setShowAccountMenu] = useState(false);
   const [showFlowchart, setShowFlowchart] = useState(false);
   const [showManual, setShowManual] = useState(false);
   const [showCreateFileDialog, setShowCreateFileDialog] = useState(false);
@@ -269,7 +269,6 @@ export default function HomePage() {
 
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const createFileInputRef = useRef<HTMLInputElement | null>(null);
-  const accountMenuRef = useRef<HTMLDivElement | null>(null);
   const desktopTerminalScrollRef = useRef<HTMLDivElement | null>(null);
   const touchOutputScrollRef = useRef<HTMLDivElement | null>(null);
   const shouldAutoScrollOutputRef = useRef(true);
@@ -347,33 +346,6 @@ export default function HomePage() {
     applyResolvedTheme(resolvedTheme);
     saveThemeMode(themeMode);
   }, [resolvedTheme, themeMode]);
-
-  useEffect(() => {
-    if (!showAccountMenu) {
-      return;
-    }
-
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      if (target instanceof Node && accountMenuRef.current?.contains(target)) {
-        return;
-      }
-      setShowAccountMenu(false);
-    };
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setShowAccountMenu(false);
-      }
-    };
-
-    window.addEventListener("pointerdown", handlePointerDown);
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", handlePointerDown);
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [showAccountMenu]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !shouldWarnBeforeUnload) {
@@ -523,11 +495,6 @@ export default function HomePage() {
 
     void saveWorkspaceNow();
   }, [authLoading, canSaveWorkspace, cloudSavingRequired, isSaving, saveWorkspaceNow]);
-
-  const handleSignOut = useCallback(() => {
-    setShowAccountMenu(false);
-    void signOut({ returnTo: "/" });
-  }, [signOut]);
 
   const handleClearTerminal = useCallback(() => {
     shouldAutoScrollOutputRef.current = true;
@@ -765,7 +732,7 @@ export default function HomePage() {
           aria-label="Checking sign-in status"
           disabled
         >
-          <UserRound size={compact ? 18 : 18} />
+          <LogIn size={18} />
           <span className={compact ? "sr-only" : "max-w-[8rem] truncate text-xs font-medium"}>
             Checking sign-in
           </span>
@@ -773,102 +740,28 @@ export default function HomePage() {
       );
     }
 
-    if (!user) {
-      return (
-        <a
-          href="/login"
-          className={`flex h-7 items-center gap-1.5 rounded-lg bg-[var(--accent)] text-white shadow-[var(--shadow-button)] transition hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${
-            compact ? "w-7 justify-center px-0" : "px-2.5"
-          }`}
-        >
-          <LogIn size={compact ? 18 : 18} />
-          <span className={compact ? "sr-only" : "max-w-[5rem] truncate text-xs font-medium"}>
-            Sign in
-          </span>
-        </a>
-      );
-    }
-
-    const accountName = user.firstName || user.email || "Account";
-    const accountInitial = accountName.trim().charAt(0).toUpperCase() || "A";
-
     return (
-      <div ref={accountMenuRef} className="relative">
-        <button
-          type="button"
-          className="flex h-7 items-center gap-1 rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-1.5 text-[var(--text2)] transition hover:bg-[var(--hover)] hover:text-[var(--text)]"
-          aria-label={`Account menu for ${accountName}`}
-          aria-haspopup="menu"
-          aria-expanded={showAccountMenu}
-          onClick={() => setShowAccountMenu((current) => !current)}
-        >
-          <UserRound size={compact ? 18 : 18} />
-          <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--accent)] px-1 text-[11px] font-semibold text-white">
-            {accountInitial}
-          </span>
-        </button>
-
-        {showAccountMenu ? (
-          <div
-            role="menu"
-            aria-label="Account menu"
-            className="absolute right-0 top-full z-[var(--z-overlay)] mt-2 w-64 overflow-hidden rounded-xl border border-[var(--separator)] bg-[var(--surface)] shadow-[var(--shadow-dropdown)]"
-          >
-            <div className="border-b border-[var(--separator)] px-3 py-3">
-              <div className="flex items-center gap-2">
-                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--accent)] text-sm font-semibold text-white">
-                  {accountInitial}
-                </span>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-[var(--text)]">{accountName}</p>
-                  {user.email && user.email !== accountName ? (
-                    <p className="truncate text-xs text-[var(--text3)]">{user.email}</p>
-                  ) : null}
-                </div>
-              </div>
-              <div className="mt-2 flex items-center gap-1.5 text-[11px] text-[var(--green)]">
-                <Cloud size={13} />
-                <span>Signed in</span>
-              </div>
-            </div>
-
-            <div className="p-1.5">
-              <button
-                type="button"
-                role="menuitem"
-                className="flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left text-sm text-[var(--text2)] transition hover:bg-[var(--hover)] hover:text-[var(--text)]"
-                onClick={() => {
-                  setShowAccountMenu(false);
-                  handleSaveWorkspace();
-                }}
-              >
-        <Save size={18} />
-                <span>{isSaving ? "Saving workspace" : "Save workspace"}</span>
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                className="flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left text-sm text-[var(--text2)] transition hover:bg-[var(--hover)] hover:text-[var(--text)]"
-                onClick={() => {
-                  setShowAccountMenu(false);
-                  setShowSettingsPanel(true);
-                }}
-              >
-                <Settings size={15} />
-                <span>App settings</span>
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                className="flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left text-sm text-[var(--red)] transition hover:bg-[var(--hover)]"
-                onClick={handleSignOut}
-              >
-                <LogOut size={15} />
-                <span>Sign out</span>
-              </button>
-            </div>
+      <div className="flex items-center">
+        <Show when="signed-out">
+          <SignInButton mode="modal">
+            <button
+              type="button"
+              className={`inline-flex items-center justify-center gap-1 rounded-lg border border-[var(--accent)] bg-[var(--accent)] font-semibold text-white shadow-sm transition hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${
+                compact ? "h-8 w-8 px-0" : "h-8 px-3 text-xs"
+              }`}
+            >
+              <LogIn size={compact ? 16 : 14} />
+              <span className={compact ? "sr-only" : "max-w-[5rem] truncate"}>
+                Log In
+              </span>
+            </button>
+          </SignInButton>
+        </Show>
+        <Show when="signed-in">
+          <div className="flex h-7 items-center rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-1.5">
+            <UserButton />
           </div>
-        ) : null}
+        </Show>
       </div>
     );
   };
@@ -1066,13 +959,15 @@ export default function HomePage() {
             >
               Not now
             </button>
-            <a
-              href="/login"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-3 py-1.5 text-sm font-semibold text-white transition hover:brightness-110"
-            >
-              <LogIn size={15} />
-              Sign in
-            </a>
+            <SignInButton mode="modal">
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm font-semibold text-[var(--text2)] transition hover:bg-[var(--surface3)] hover:text-[var(--text)]"
+              >
+                <LogIn size={15} />
+                Log In
+              </button>
+            </SignInButton>
           </div>
         </div>
       </div>

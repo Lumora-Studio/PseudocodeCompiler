@@ -1,4 +1,4 @@
-export type AppPlatform = "browser" | "desktop";
+export type AppPlatform = "browser" | "local" | "desktop";
 
 export type WorkspacePersistenceMode = "memory" | "local" | "cloud";
 
@@ -12,7 +12,16 @@ export function getClientAppPlatform(): AppPlatform {
   }
 
   const electronWindow = window as Window & { electron?: ElectronBridge };
-  return electronWindow.electron?.isDesktop ? "desktop" : "browser";
+  if (electronWindow.electron?.isDesktop) {
+    return "desktop";
+  }
+
+  const hostname = window.location.hostname;
+  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") {
+    return "local";
+  }
+
+  return "browser";
 }
 
 export function getWorkspacePersistenceMode({
@@ -22,7 +31,7 @@ export function getWorkspacePersistenceMode({
   platform: AppPlatform;
   signedIn: boolean;
 }): WorkspacePersistenceMode {
-  if (platform === "desktop") {
+  if (platform === "desktop" || platform === "local") {
     return "local";
   }
 

@@ -15,9 +15,8 @@ const nextConfig: NextConfig = {
     root: monorepoRoot,
     resolveAlias: isElectronBuild
       ? {
-          "@workos-inc/authkit-nextjs": "./src/lib/authkit-electron-server.ts",
-          "@workos-inc/authkit-nextjs/components":
-            "./src/lib/authkit-electron-components.tsx",
+          "@clerk/nextjs": "./src/lib/clerk-electron-components.tsx",
+          "@clerk/nextjs/server": "./src/lib/clerk-electron-server.ts",
         }
       : undefined,
   },
