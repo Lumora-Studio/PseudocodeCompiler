@@ -37,7 +37,7 @@ vi.mock("@xyflow/react", () => ({
 
 describe("DecisionNode", () => {
   it("keeps connector handles above decorative labels", () => {
-    const props = {
+    const props: React.ComponentProps<typeof DecisionNode> = {
       id: "decision-1",
       type: "decision",
       selected: false,
@@ -53,7 +53,7 @@ describe("DecisionNode", () => {
       },
       xPos: 0,
       yPos: 0,
-    } as any;
+    };
 
     const { container } = render(
       <DecisionNode {...props} />,

@@ -122,11 +122,17 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
 
     let cancelled = false;
     loadedRef.current = false;
-    setWorkspace(null);
     workspaceRef.current = null;
-    setHasPendingSave(false);
-    setSaveError(null);
-    setIsSaving(false);
+
+    queueMicrotask(() => {
+      if (cancelled) {
+        return;
+      }
+      setWorkspace(null);
+      setHasPendingSave(false);
+      setSaveError(null);
+      setIsSaving(false);
+    });
 
     void loadWorkspace(defaultSource, { mode: persistenceMode }).then((loadedWorkspace) => {
       if (cancelled) {
@@ -328,8 +334,17 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
     if (!activeDocumentId) {
       return;
     }
+    let cancelled = false;
     resolvePendingInput(null);
-    setCompileDiagnostics([]);
+    queueMicrotask(() => {
+      if (cancelled) {
+        return;
+      }
+      setCompileDiagnostics([]);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [activeDocumentId, resolvePendingInput]);
 
   useEffect(() => {
@@ -337,13 +352,22 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
       return;
     }
 
-    setTerminalOutputs((current) => {
-      const next: Record<string, string> = {};
-      for (const panelId of terminalPanelIds) {
-        next[panelId] = current[panelId] ?? `Terminal ready for ${activeDocumentName}.`;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) {
+        return;
       }
-      return next;
+      setTerminalOutputs((current) => {
+        const next: Record<string, string> = {};
+        for (const panelId of terminalPanelIds) {
+          next[panelId] = current[panelId] ?? `Terminal ready for ${activeDocumentName}.`;
+        }
+        return next;
+      });
     });
+    return () => {
+      cancelled = true;
+    };
   }, [activeDocumentName, terminalPanelIds, workspace]);
 
   const updateTerminalOutput = useCallback((panelId: string, text: string) => {

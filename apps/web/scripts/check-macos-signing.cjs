@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-require-imports */
 const { execFileSync } = require("node:child_process");
 
 function getCodeSigningIdentities() {
