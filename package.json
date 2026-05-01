@@ -25,7 +25,8 @@
     "lint": "pnpm -r --if-present run lint"
   },
   "devDependencies": {
-    "convex": "^1.36.1"
+    "convex": "^1.36.1",
+    "next": "16.1.6"
   },
   "pnpm": {
     "overrides": {

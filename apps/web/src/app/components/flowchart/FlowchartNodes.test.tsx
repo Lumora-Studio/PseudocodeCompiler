@@ -43,6 +43,9 @@ describe("DecisionNode", () => {
       selected: false,
       dragging: false,
       zIndex: 1,
+      selectable: true,
+      deletable: true,
+      draggable: true,
       isConnectable: true,
       data: {
         type: "decision",
@@ -51,8 +54,8 @@ describe("DecisionNode", () => {
         trueLabel: "Yes",
         falseLabel: "No",
       },
-      xPos: 0,
-      yPos: 0,
+      positionAbsoluteX: 0,
+      positionAbsoluteY: 0,
     };
 
     const { container } = render(
