@@ -18,8 +18,11 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "dist": "pnpm run build:electron-web && node scripts/check-macos-signing.cjs && electron-builder --mac dmg",
-    "dist:unsigned": "pnpm run build:electron-web && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg",
+    "dist": "pnpm run dist:mac",
+    "dist:mac": "pnpm run build:electron-web && node scripts/check-macos-signing.cjs && electron-builder --mac dmg",
+    "dist:mac:unsigned": "pnpm run build:electron-web && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg",
+    "dist:unsigned": "pnpm run dist:mac:unsigned",
+    "dist:win": "pnpm run build:electron-web && electron-builder --win nsis",
     "pack": "pnpm run build:electron-web && electron-builder --dir"
   },
   "dependencies": {
@@ -95,6 +98,17 @@
     "dmg": {
       "icon": "electron/assets/icon.icns",
       "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
     }
   }
 }

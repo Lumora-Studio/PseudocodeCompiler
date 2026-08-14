@@ -162,7 +162,10 @@ pnpm --filter @igcse/web dev:web
 pnpm --filter @igcse/web dev:electron
 pnpm --filter @igcse/web build
 pnpm --filter @igcse/web dist   # signed macOS DMG build
-pnpm --filter @igcse/web dist:unsigned   # unsigned macOS DMG build
+pnpm --filter @igcse/web dist:mac   # signed macOS DMG build
+pnpm --filter @igcse/web dist:mac:unsigned   # unsigned macOS DMG build
+pnpm --filter @igcse/web dist:unsigned   # alias for unsigned macOS DMG build
+pnpm --filter @igcse/web dist:win   # Windows NSIS installer build
 pnpm --filter @igcse/web pack   # unpacked Electron app
 ```
 
@@ -214,8 +217,12 @@ After changing environment variables, redeploy so the build and runtime receive 
 
 - `pnpm --filter @igcse/web pack` is the local testing path. It creates an unpacked `.app` in `apps/web/dist/mac-arm64/`.
 - `pnpm --filter @igcse/web dist` is for distribution. It now requires a `Developer ID Application` certificate in your macOS keychain.
-- `pnpm --filter @igcse/web dist:unsigned` creates a DMG without Developer ID signing. Use this only for manual/local sharing where Gatekeeper warnings are acceptable.
+- `pnpm --filter @igcse/web dist:mac:unsigned` creates a DMG without Developer ID signing. Use this only for manual/local sharing where Gatekeeper warnings are acceptable.
 - Without that certificate, Electron can only ad hoc sign the bundle. The app may still start from Terminal, but Finder and Gatekeeper will reject the packaged DMG.
+
+### GitHub Desktop Builds
+
+The `Desktop Build` workflow builds and uploads unsigned desktop artifacts for macOS and Windows. It runs on relevant pull requests, pushes to `main`, and manual dispatches.
 
 ### Mobile
 

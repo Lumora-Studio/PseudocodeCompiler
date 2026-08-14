@@ -1,0 +1,84 @@
+name: Desktop Build
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "apps/web/**"
+      - "packages/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/desktop-build.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/web/**"
+      - "packages/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/desktop-build.yml"
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-latest
+            build-command: pnpm run dist:mac:unsigned
+            artifact-name: desktop-macos
+            artifact-path: |
+              apps/web/dist/*.dmg
+              apps/web/dist/*.blockmap
+              apps/web/dist/latest-mac.yml
+          - name: Windows
+            os: windows-latest
+            build-command: pnpm run dist:win
+            artifact-name: desktop-windows
+            artifact-path: |
+              apps/web/dist/*.exe
+              apps/web/dist/*.blockmap
+              apps/web/dist/latest.yml
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.29.3
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check desktop source
+        run: pnpm --filter @igcse/web typecheck
+
+      - name: Run desktop tests
+        run: pnpm --filter @igcse/web test
+
+      - name: Build desktop installer
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+        run: ${{ matrix.build-command }}
+
+      - name: Upload desktop artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact-name }}
+          path: ${{ matrix.artifact-path }}
+          if-no-files-found: error
+          retention-days: 14
