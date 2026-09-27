@@ -14,13 +14,19 @@ import {
   Node,
   ReactFlowProvider,
   useReactFlow,
+  useNodesInitialized,
   MarkerType,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import Link from 'next/link';
+import { isValidFlowchartConnection } from './connections';
+import { useGraphHistory } from './useGraphHistory';
 import { nodeTypes } from './FlowchartNodes';
+import { edgeTypes } from './FlowchartEdge';
 import {
   buildFlowchartFromPseudocode,
   FLOWCHART_PALETTE_ITEMS,
+  type FlowchartPaletteItem,
   createFlowchartNodeData,
   generatePseudocodeFromFlowchart,
   getDecisionEdgeLabel,
@@ -29,24 +35,15 @@ import {
 } from './model';
 import { FlowchartNodeData, FlowchartNodeType, NODE_DIMENSIONS, NODE_TYPE_CONFIG } from './types';
 import {
-  ArrowRightLeft,
-  Box,
-  Cpu,
   Download,
-  GitBranch,
+  Undo2,
+  Redo2,
+  Maximize,
+  SlidersHorizontal,
   Layout,
-  Play,
   Plus,
   Trash2,
 } from 'lucide-react';
-
-const iconMap = {
-  Play,
-  Cpu,
-  GitBranch,
-  ArrowRightLeft,
-  Box,
-};
 
 // Shape preview components for palette
 function ShapePreview({ type, color }: { type: FlowchartNodeType; color: string }) {
@@ -118,6 +115,7 @@ interface FlowchartEditorProps {
   onCodeChange?: (code: string) => void;
   onGenerateCode?: (code: string) => void;
   onSave?: (nodes: Node[], edges: Edge[]) => void;
+  isVisible?: boolean;
 }
 
 function FlowchartEditorInner({
@@ -127,17 +125,58 @@ function FlowchartEditorInner({
   onCodeChange,
   onGenerateCode,
   onSave,
+  isVisible = true,
 }: FlowchartEditorProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [showPalette, setShowPalette] = useState(true);
+  const [showInspector, setShowInspector] = useState(false);
+  const { record, reset: resetHistory, move, canUndo, canRedo } = useGraphHistory();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const hasInitializedCodeSyncRef = useRef(false);
-  const isHydratingFromSourceRef = useRef(false);
+  // Code of a graph imported from `source` that hasn't rendered yet; it must not be published back.
+  const pendingImportCodeRef = useRef<string | null>(null);
+  const lastSyncedSourceRef = useRef<string | null>(null);
+  // Set by Clear Canvas: canvas edits stay local until the user presses Generate Code.
+  const isDetachedRef = useRef(false);
   const lastPublishedCodeRef = useRef<string>('');
+  const lastGeneratedGraphRef = useRef<string | null>(null);
   const nodesRef = useRef<Node[]>(initialNodes);
   const edgesRef = useRef<Edge[]>(initialEdges);
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, fitView } = useReactFlow();
+  const nodesInitialized = useNodesInitialized();
+  useEffect(() => {
+    const canvas = reactFlowWrapper.current;
+    if (!isVisible || !nodesInitialized || !canvas) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const observer = new ResizeObserver(() => {
+      clearTimeout(timer);
+      timer = setTimeout(() => void fitView({ padding: 0.2, duration: 200 }), 120);
+    });
+    observer.observe(canvas);
+    return () => {
+      observer.disconnect();
+      clearTimeout(timer);
+    };
+  }, [fitView, isVisible, nodesInitialized]);
+  const snapshot = useCallback(() => ({ nodes: nodesRef.current, edges: edgesRef.current, detached: isDetachedRef.current }), []);
+  const checkpoint = useCallback(() => record(snapshot()), [record, snapshot]);
+  const restore = useCallback((direction: 'undo' | 'redo') => {
+    const previous = move(direction, snapshot());
+    if (!previous) return;
+    isDetachedRef.current = previous.detached;
+    setNodes(previous.nodes);
+    setEdges(previous.edges);
+  }, [move, snapshot, setNodes, setEdges]);
+  const isValidConnection = useCallback((connection: Connection | Edge) =>
+    isValidFlowchartConnection(connection, nodesRef.current, edgesRef.current), []);
+
+
+  // React Flow also updates nodes for selection, measurement and movement. Those are not code edits.
+  const graphContent = useMemo(() => JSON.stringify({
+    nodes: nodes.map(({ id, type, data }) => ({ id, type, data })),
+    edges: edges.map(({ source, target, sourceHandle, targetHandle }) => ({ source, target, sourceHandle, targetHandle })),
+  }), [nodes, edges]);
 
   const selectedNode = useMemo(() => nodes.find((node) => node.selected) ?? null, [nodes]);
   const selectedNodeData = selectedNode ? (selectedNode.data as FlowchartNodeData) : null;
@@ -154,9 +193,10 @@ function FlowchartEditorInner({
   }, [edges, nodes, onSave]);
 
   useEffect(() => {
-    if (typeof source !== 'string') {
+    if (typeof source !== 'string' || !isVisible || source === lastSyncedSourceRef.current) {
       return;
     }
+    lastSyncedSourceRef.current = source;
 
     const nextSource = source.replace(/\r\n/g, '\n').trim();
     const currentCode = generatePseudocodeFromFlowchart(nodesRef.current, edgesRef.current)
@@ -168,38 +208,47 @@ function FlowchartEditorInner({
       return;
     }
 
-    const imported = buildFlowchartFromPseudocode(source);
-    const importedCode = generatePseudocodeFromFlowchart(imported.nodes, imported.edges)
-      .replace(/\r\n/g, '\n')
-      .trim();
-
-    isHydratingFromSourceRef.current = true;
-    lastPublishedCodeRef.current = importedCode;
+    let imported: ReturnType<typeof buildFlowchartFromPseudocode>;
+    try {
+      imported = buildFlowchartFromPseudocode(source);
+    } catch (error) {
+      console.warn("Flowchart import failed.", error);
+      return;
+    }
+    resetHistory();
+    isDetachedRef.current = false;
+    pendingImportCodeRef.current = generatePseudocodeFromFlowchart(imported.nodes, imported.edges);
     setNodes(imported.nodes);
     setEdges(imported.edges);
-  }, [setEdges, setNodes, source]);
+  }, [isVisible, resetHistory, setEdges, setNodes, source]);
 
   useEffect(() => {
+    if (!isVisible) {
+      return;
+    }
+
+    if (graphContent === lastGeneratedGraphRef.current && pendingImportCodeRef.current === null) return;
+    lastGeneratedGraphRef.current = graphContent;
     const code = generatePseudocodeFromFlowchart(nodes, edges);
-    if (!hasInitializedCodeSyncRef.current) {
+    const pendingImportCode = pendingImportCodeRef.current;
+    if (pendingImportCode !== null || !hasInitializedCodeSyncRef.current) {
+      // Wait until the imported graph renders, then use it as the published baseline.
+      if (pendingImportCode !== null && code !== pendingImportCode) {
+        return;
+      }
+      pendingImportCodeRef.current = null;
       hasInitializedCodeSyncRef.current = true;
       lastPublishedCodeRef.current = code;
       return;
     }
 
-    if (isHydratingFromSourceRef.current) {
-      isHydratingFromSourceRef.current = false;
-      lastPublishedCodeRef.current = code;
-      return;
-    }
-
-    if (code === lastPublishedCodeRef.current) {
+    if (isDetachedRef.current || code === lastPublishedCodeRef.current) {
       return;
     }
 
     lastPublishedCodeRef.current = code;
     onCodeChange?.(code);
-  }, [edges, nodes, onCodeChange]);
+  }, [edges, graphContent, isVisible, nodes, onCodeChange]);
 
   const syncDecisionEdges = useCallback(
     (nodeId: string, nextData: FlowchartNodeData) => {
@@ -230,6 +279,7 @@ function FlowchartEditorInner({
         return;
       }
 
+      checkpoint();
       const nextData = {
         ...selectedNodeData,
         ...updates,
@@ -254,11 +304,13 @@ function FlowchartEditorInner({
         syncDecisionEdges(selectedNode.id, nextData);
       }
     },
-    [selectedNode, selectedNodeData, setNodes, syncDecisionEdges],
+    [checkpoint, selectedNode, selectedNodeData, setNodes, syncDecisionEdges],
   );
 
   const onConnect = useCallback(
     (connection: Connection) => {
+      if (!isValidConnection(connection)) return;
+      checkpoint();
       const sourceNode = nodes.find((node) => node.id === connection.source);
       const sourceData = sourceNode ? (sourceNode.data as FlowchartNodeData) : null;
       const branchLabel = sourceData ? getDecisionEdgeLabel(connection, sourceData) : undefined;
@@ -278,7 +330,7 @@ function FlowchartEditorInner({
         ),
       );
     },
-    [nodes, setEdges],
+    [checkpoint, isValidConnection, nodes, setEdges],
   );
 
   const onDragOver = useCallback((event: React.DragEvent) => {
@@ -286,34 +338,52 @@ function FlowchartEditorInner({
     event.dataTransfer.dropEffect = 'move';
   }, []);
 
+  const addNodeAt = useCallback(
+    (
+      type: FlowchartNodeType,
+      defaults: Partial<FlowchartNodeData> | undefined,
+      clientX: number,
+      clientY: number,
+    ) => {
+      checkpoint();
+      const position = screenToFlowPosition({ x: clientX, y: clientY });
+      const dimensions = NODE_DIMENSIONS[type];
+      const newNode: Node = {
+        id: `${type}-${crypto.randomUUID()}`,
+        type,
+        position: {
+          x: position.x - dimensions.width / 2,
+          y: position.y - dimensions.height / 2,
+        },
+        data: createFlowchartNodeData(type, defaults),
+      };
+
+      setNodes((currentNodes) => currentNodes.concat(newNode));
+    },
+    [checkpoint, screenToFlowPosition, setNodes],
+  );
+
   const onDrop = useCallback(
     (event: React.DragEvent) => {
       event.preventDefault();
 
       const payload = parsePalettePayload(event.dataTransfer.getData('application/reactflow'));
-      if (!payload) {
-        return;
+      if (payload) {
+        addNodeAt(payload.type, payload.defaults, event.clientX, event.clientY);
       }
-
-      const position = screenToFlowPosition({
-        x: event.clientX,
-        y: event.clientY,
-      });
-
-      const dimensions = NODE_DIMENSIONS[payload.type];
-      const newNode: Node = {
-        id: `${payload.type}-${Date.now()}`,
-        type: payload.type,
-        position: {
-          x: position.x - dimensions.width / 2,
-          y: position.y - dimensions.height / 2,
-        },
-        data: createFlowchartNodeData(payload.type, payload.defaults),
-      };
-
-      setNodes((currentNodes) => currentNodes.concat(newNode));
     },
-    [screenToFlowPosition, setNodes],
+    [addNodeAt],
+  );
+
+  // Click and keyboard path for the palette: add the block at the centre of the visible canvas.
+  const addPaletteItemAtCenter = useCallback(
+    (item: FlowchartPaletteItem) => {
+      const bounds = reactFlowWrapper.current?.getBoundingClientRect();
+      if (bounds) {
+        addNodeAt(item.type, item.defaults, bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
+      }
+    },
+    [addNodeAt],
   );
 
   const onDragStart = (event: React.DragEvent, payload: string) => {
@@ -324,6 +394,7 @@ function FlowchartEditorInner({
   const generatePseudocode = useCallback(() => {
     const code = generatePseudocodeFromFlowchart(nodes, edges);
     lastPublishedCodeRef.current = code;
+    isDetachedRef.current = false;
 
     if (onGenerateCode) {
       onGenerateCode(code);
@@ -333,14 +404,18 @@ function FlowchartEditorInner({
   }, [edges, nodes, onGenerateCode]);
 
   const deleteSelected = useCallback(() => {
-    setNodes((currentNodes) => currentNodes.filter((node) => !node.selected));
-    setEdges((currentEdges) => currentEdges.filter((edge) => !edge.selected));
-  }, [setEdges, setNodes]);
+    checkpoint();
+    const deletedIds = new Set(nodes.filter((node) => node.selected).map((node) => node.id));
+    setNodes((currentNodes) => currentNodes.filter((node) => !deletedIds.has(node.id)));
+    setEdges((currentEdges) => currentEdges.filter((edge) => !edge.selected && !deletedIds.has(edge.source) && !deletedIds.has(edge.target)));
+  }, [checkpoint, nodes, setEdges, setNodes]);
 
   const clearCanvas = useCallback(() => {
+    checkpoint();
+    isDetachedRef.current = true;
     setNodes([]);
     setEdges([]);
-  }, [setEdges, setNodes]);
+  }, [checkpoint, setEdges, setNodes]);
 
   const processStatements = useMemo(() => {
     if (!selectedNodeData || selectedNodeData.type !== 'process') {
@@ -384,10 +459,26 @@ function FlowchartEditorInner({
   );
 
   return (
-    <div className="flex h-full w-full">
+    <div className="relative flex h-full w-full min-w-0 flex-col" onKeyDown={(event) => {
+      if ((event.target as HTMLElement).closest('input, textarea, [contenteditable="true"]')) return;
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
+        event.preventDefault();
+        restore(event.shiftKey ? 'redo' : 'undo');
+      }
+    }}>
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--separator)] bg-[var(--sidebar)] px-3 py-2 text-xs text-[var(--text)]">
+        <button type="button" onClick={() => restore('undo')} disabled={!canUndo} aria-label="Undo flowchart change" title="Undo (Ctrl/Cmd+Z)" className="rounded p-2 hover:bg-[var(--surface2)] disabled:opacity-30"><Undo2 size={16} /></button>
+        <button type="button" onClick={() => restore('redo')} disabled={!canRedo} aria-label="Redo flowchart change" title="Redo (Ctrl/Cmd+Shift+Z)" className="rounded p-2 hover:bg-[var(--surface2)] disabled:opacity-30"><Redo2 size={16} /></button>
+        <button type="button" onClick={() => void fitView({ padding: 0.2, duration: 200 })} className="flex items-center gap-1 rounded p-2 hover:bg-[var(--surface2)]"><Maximize size={16} /> Fit chart</button>
+        <button type="button" aria-expanded={showInspector} onClick={() => setShowInspector((value) => !value)} className="flex items-center gap-1 rounded p-2 hover:bg-[var(--surface2)]"><SlidersHorizontal size={16} /> Inspector</button>
+        <span className="ml-auto text-[var(--text2)]">{nodes.length} blocks · {edges.length} connections</span>
+        <Link href="/flowcharts" target="_blank" rel="noopener noreferrer" title="Flowchart guide (opens in a new tab)" className="rounded p-2 underline">Guide</Link>
+      </div>
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
       <div
+        inert={!showPalette}
         className={`
-          flex flex-col border-r border-[var(--separator)] bg-[var(--sidebar)]
+          flex shrink-0 flex-col border-r border-[var(--separator)] bg-[var(--sidebar)]
           transition-all duration-300 ease-in-out
           ${showPalette ? 'w-64' : 'w-0 overflow-hidden'}
         `}
@@ -395,18 +486,26 @@ function FlowchartEditorInner({
         <div className="flex items-center justify-between border-b border-[var(--separator)] p-4">
           <div>
             <h3 className="text-sm font-semibold text-[var(--text)]">Blocks</h3>
-            <p className="mt-0.5 text-xs text-[var(--text2)]">Drag onto the flow</p>
+            <p className="mt-0.5 text-xs text-[var(--text2)]">Click or drag to add a block</p>
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-3 space-y-2">
           {FLOWCHART_PALETTE_ITEMS.map((item) => {
             const config = NODE_TYPE_CONFIG[item.type];
-            const Icon = iconMap[config.icon as keyof typeof iconMap];
 
             return (
               <div
                 key={item.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => addPaletteItemAtCenter(item)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    addPaletteItemAtCenter(item);
+                  }
+                }}
                 draggable
                 onDragStart={(event) => onDragStart(event, serializePaletteItem(item))}
                 className="
@@ -442,6 +541,7 @@ function FlowchartEditorInner({
             Generate Code
           </button>
 
+          <p className="text-xs text-[var(--text2)]">Clear Canvas keeps your code until you choose Generate Code.</p>
           <button
             onClick={clearCanvas}
             className="
@@ -457,6 +557,9 @@ function FlowchartEditorInner({
       </div>
 
       <button
+        type="button"
+        aria-label={showPalette ? 'Hide palette' : 'Show palette'}
+        aria-expanded={showPalette}
         onClick={() => setShowPalette((current) => !current)}
         className={`
           absolute left-0 top-1/2 z-10 flex h-12 w-6 -translate-y-1/2 items-center justify-center rounded-r-lg
@@ -469,16 +572,31 @@ function FlowchartEditorInner({
         <Layout className="h-3 w-3" />
       </button>
 
-      <div className="relative flex-1" ref={reactFlowWrapper}>
+      <div className="relative min-w-0 flex-1" ref={reactFlowWrapper}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
+          onNodesChange={(changes) => {
+            const removed = new Set(changes.filter((change) => change.type === 'remove').map((change) => change.id));
+            if (removed.size > 0) {
+              checkpoint();
+              setEdges((current) => current.filter((edge) => !removed.has(edge.source) && !removed.has(edge.target)));
+            }
+            onNodesChange(changes);
+          }}
+          onNodeDragStart={checkpoint}
+          onNodeClick={() => setShowInspector(true)}
+          onEdgesChange={(changes) => {
+            if (changes.some((change) => change.type === 'remove')) checkpoint();
+            onEdgesChange(changes);
+          }}
+          isValidConnection={isValidConnection}
           onConnect={onConnect}
           onDragOver={onDragOver}
           onDrop={onDrop}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          minZoom={0.1}
           fitView
           attributionPosition="bottom-right"
           deleteKeyCode={['Backspace', 'Delete']}
@@ -500,7 +618,7 @@ function FlowchartEditorInner({
         </ReactFlow>
       </div>
 
-      <aside className="flex w-80 shrink-0 flex-col border-l border-[var(--separator)] bg-[var(--sidebar)]">
+      {showInspector ? <aside className="absolute inset-y-0 right-0 z-30 flex w-64 shrink-0 lg:static flex-col border-l border-[var(--separator)] bg-[var(--sidebar)]">
         <div className="border-b border-[var(--separator)] p-4">
           <h3 className="text-sm font-semibold text-[var(--text)]">Inspector</h3>
           <p className="mt-0.5 text-xs text-[var(--text2)]">
@@ -729,7 +847,8 @@ function FlowchartEditorInner({
             </div>
           )}
         </div>
-      </aside>
+      </aside> : null}
+      </div>
     </div>
   );
 }

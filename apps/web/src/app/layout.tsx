@@ -2,10 +2,21 @@ import type { Metadata, Viewport } from "next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { ClerkProvider } from "@/lib/auth-components";
 import "./globals.css";
+import { canIndexSite, getSiteOrigin, pageMetadata, siteDescription, siteName } from "@/lib/seo";
 
 export const metadata: Metadata = {
-  title: "Pseudocode Compiler",
-  description: "Web-based strict pseudocode compiler and editor with Python execution.",
+  ...pageMetadata("/", "Online pseudocode compiler and flowchart editor", siteDescription),
+  metadataBase: getSiteOrigin() ? new URL(getSiteOrigin()!) : undefined,
+  applicationName: siteName,
+  robots: {
+    index: canIndexSite(),
+    follow: true,
+    googleBot: { index: canIndexSite(), follow: true, "max-image-preview": "large" },
+  },
+  verification: {
+    google: process.env.GOOGLE_SITE_VERIFICATION,
+    other: process.env.BING_SITE_VERIFICATION ? { "msvalidate.01": process.env.BING_SITE_VERIFICATION } : undefined,
+  },
   icons: {
     icon: [
       { url: "/favicon.ico?v=2" },

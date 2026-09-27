@@ -2,7 +2,7 @@
 
 import React, { memo } from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
-import { getNodePrimaryText, getProcessStatements } from './model';
+import { getNodePrimaryText, getProcessStatements, getTerminatorKind } from './model';
 import { FlowchartNodeData } from './types';
 
 // Custom node components for each IGCSE flowchart symbol
@@ -15,15 +15,19 @@ const BaseNode = memo(({
   children,
   style,
   hideDefaultHandles = false,
+  hideInput = false,
+  hideOutput = false,
 }: {
   selected: boolean;
   children: React.ReactNode;
   style?: React.CSSProperties;
   hideDefaultHandles?: boolean;
+  hideInput?: boolean;
+  hideOutput?: boolean;
 }) => {
   return (
     <div
-      className="relative"
+      className={`relative rounded-lg ${selected ? 'outline-2 outline-offset-4 outline-[var(--accent)]' : ''}`}
       style={{
         ...style,
         background: 'transparent',
@@ -32,16 +36,16 @@ const BaseNode = memo(({
       {children}
       {!hideDefaultHandles && (
         <>
-          <Handle
+          {!hideInput && <Handle
             type="target"
             position={Position.Top}
             className={HANDLE_CLASS_NAME}
-          />
-          <Handle
+          />}
+          {!hideOutput && <Handle
             type="source"
             position={Position.Bottom}
             className={HANDLE_CLASS_NAME}
-          />
+          />}
         </>
       )}
     </div>
@@ -55,7 +59,7 @@ export const TerminatorNode = memo((props: NodeProps) => {
   const nodeData = data as FlowchartNodeData;
   
   return (
-    <BaseNode selected={selected}>
+    <BaseNode selected={selected} hideInput={getTerminatorKind(nodeData) === 'start'} hideOutput={getTerminatorKind(nodeData) === 'end'}>
       <div
         className="flex items-center justify-center px-8 py-3"
         style={{
@@ -63,10 +67,11 @@ export const TerminatorNode = memo((props: NodeProps) => {
           border: '2px solid var(--flowchart-terminator)',
           borderRadius: 'var(--radius-sm)',
           color: 'var(--bg)',
-          minWidth: '140px',
+          width: 140,
+          minHeight: 60,
         }}
       >
-        <span className="font-medium text-sm">{nodeData.label}</span>
+        <span className="truncate font-medium text-sm">{nodeData.label}</span>
       </div>
     </BaseNode>
   );
@@ -82,7 +87,7 @@ export const ProcessNode = memo((props: NodeProps) => {
   return (
     <BaseNode selected={selected}>
       <div
-        className="min-w-[220px] max-w-[300px] px-5 py-4"
+        className="w-[300px] px-5 py-4"
         style={{
           background: 'var(--flowchart-process)',
           border: '2px solid var(--flowchart-process)',
@@ -97,7 +102,7 @@ export const ProcessNode = memo((props: NodeProps) => {
               Process
             </span>
             {nodeData.label ? (
-              <span className="text-xs font-medium text-[var(--bg)]">{nodeData.label}</span>
+              <span className="min-w-0 truncate text-xs font-medium text-[var(--bg)]">{nodeData.label}</span>
             ) : null}
           </div>
 
@@ -108,13 +113,13 @@ export const ProcessNode = memo((props: NodeProps) => {
                   key={`${statement}-${index}`}
                   className="rounded-lg border border-[var(--bg)] bg-transparent px-3 py-2 text-left"
                 >
-                  <span className="block text-xs leading-5 text-[var(--bg)]">{statement}</span>
+                  <span className="block whitespace-pre-wrap break-words text-xs leading-5 text-[var(--bg)]">{statement}</span>
                 </div>
               ))}
             </div>
           ) : (
             <div className="rounded-lg border border-dashed border-[var(--bg)] px-3 py-4 text-center">
-              <span className="block text-xs leading-5 text-[var(--bg)]">
+              <span className="block whitespace-pre-wrap break-words text-xs leading-5 text-[var(--bg)]">
                 Select this block and add lines inside it.
               </span>
             </div>
@@ -229,7 +234,7 @@ export const InputOutputNode = memo((props: NodeProps) => {
         <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--bg)]">
           {isInput ? 'Input' : 'Output'}
         </span>
-        <span className="font-medium text-sm leading-5" style={{ color: 'var(--bg)' }}>
+        <span className="max-w-full break-words font-medium text-sm leading-5" style={{ color: 'var(--bg)' }}>
           {content}
         </span>
       </div>

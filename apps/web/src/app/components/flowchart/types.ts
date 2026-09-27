@@ -10,10 +10,15 @@ export type FlowchartNodeType =
   | 'inputOutput'     // Input/Output - parallelogram
   | 'subroutine';     // Subroutine - rectangle with side bars
 
+export type TerminatorKind = 'start' | 'end';
+
 export interface FlowchartNodeData extends Record<string, unknown> {
   label: string;
   type: FlowchartNodeType;
   content?: string;
+  // For terminator nodes
+  terminatorKind?: TerminatorKind;
+  commentLine?: string; // original `// Start` / `// End` source line, emitted back verbatim
   // For decision nodes
   trueLabel?: string;
   falseLabel?: string;
@@ -82,9 +87,9 @@ export const NODE_TYPE_CONFIG: Record<FlowchartNodeType, {
 
 // Default node dimensions
 export const NODE_DIMENSIONS = {
-  terminator: { width: 160, height: 60 },
-  process: { width: 220, height: 140 },
-  decision: { width: 160, height: 120 },
-  inputOutput: { width: 180, height: 80 },
+  terminator: { width: 140, height: 60 },
+  process: { width: 300, height: 140 },
+  decision: { width: 140, height: 140 },
+  inputOutput: { width: 220, height: 88 },
   subroutine: { width: 180, height: 80 },
 };
