@@ -2,16 +2,13 @@ import type { Connection, Edge, Node } from "@xyflow/react";
 import { MarkerType } from "@xyflow/react";
 import { parseSource } from "@igcse/compiler";
 import type {
-  ArrayAccessNode,
-  ExpressionNode,
   ForStatementNode,
-  IdentifierNode,
   IfStatementNode,
   SourceSpan,
   StatementNode,
   WhileStatementNode,
 } from "@igcse/compiler/types";
-import { FlowchartNodeData, FlowchartNodeType, NODE_TYPE_CONFIG } from "./types";
+import { FlowchartNodeData, FlowchartNodeType, NODE_TYPE_CONFIG, NODE_DIMENSIONS, TerminatorKind } from "./types";
 
 export interface FlowchartPaletteItem {
   id: string;
@@ -31,12 +28,15 @@ export interface FlowchartGraphSnapshot {
   edges: Edge[];
 }
 
+type TerminatorItem = { kind: "terminator"; terminatorKind: TerminatorKind; commentLine?: string };
+
 type LayoutItem =
-  | { kind: "terminator"; label: "Start" | "End" }
+  | TerminatorItem
+  | { kind: "comment"; line: string }
   | { kind: "statement"; statement: StatementNode };
 
 type FallbackLayoutItem =
-  | { kind: "terminator"; label: "Start" | "End" }
+  | TerminatorItem
   | { kind: "processLine"; line: string }
   | { kind: "input"; content: string }
   | { kind: "output"; content: string }
@@ -107,29 +107,12 @@ const FOR_LINE_RE = /^FOR\s+(.+)$/i;
 const NEXT_LINE_RE = /^NEXT\b.*$/i;
 const WHILE_LINE_RE = /^WHILE\s+(.+?)\s+DO$/i;
 const ENDWHILE_LINE_RE = /^ENDWHILE$/i;
-const FLOWCHART_BRANCH_COMMENT_RE = /^\/\/\s*(.+?)\s+branch$/i;
 const FLOWCHART_VERTICAL_GAP = 76;
 const FLOWCHART_BRANCH_HORIZONTAL_GAP = 300;
 const FLOWCHART_BRANCH_VERTICAL_GAP = 92;
 const FLOWCHART_NODE_X = 96;
 const FLOWCHART_NODE_Y = 48;
 const FLOWCHART_INDENT = "    ";
-const UNARY_PRECEDENCE = 7;
-const BINARY_PRECEDENCE: Record<string, number> = {
-  OR: 1,
-  AND: 2,
-  "=": 3,
-  "<": 3,
-  "<=": 3,
-  ">": 3,
-  ">=": 3,
-  "<>": 3,
-  "+": 4,
-  "-": 4,
-  "*": 5,
-  "/": 5,
-  "^": 6,
-};
 
 function createDefaultNodeData(type: FlowchartNodeType): FlowchartNodeData {
   switch (type) {
@@ -203,6 +186,7 @@ export const FLOWCHART_PALETTE_ITEMS: FlowchartPaletteItem[] = [
     description: "Program entry point",
     defaults: {
       label: "Start",
+      terminatorKind: "start",
     },
   },
   {
@@ -256,6 +240,7 @@ export const FLOWCHART_PALETTE_ITEMS: FlowchartPaletteItem[] = [
     description: "Program exit point",
     defaults: {
       label: "End",
+      terminatorKind: "end",
     },
   },
 ];
@@ -327,14 +312,14 @@ function getEstimatedNodeHeight(type: FlowchartNodeType, data: FlowchartNodeData
     case "terminator":
       return 60;
     case "inputOutput":
-      return 88;
+      return Math.max(88, 56 + Math.ceil(getNodePrimaryText(data).length / 22) * 20);
     case "subroutine":
       return 80;
     case "decision":
       return 140;
     case "process": {
       const statements = getProcessStatements(data);
-      return Math.max(100, 64 + statements.length * 40);
+      return Math.max(100, 64 + statements.reduce((height, line) => height + Math.max(1, Math.ceil(line.length / 26)) * 20 + 24, 0));
     }
     default:
       return 100;
@@ -351,7 +336,7 @@ function createNode(
   const node: Node = {
     id: `import-node-${context.nextNodeIndex}`,
     type,
-    position: { x, y },
+    position: { x: x + (NODE_DIMENSIONS.process.width - NODE_DIMENSIONS[type].width) / 2, y },
     data,
   };
 
@@ -395,188 +380,33 @@ function createDecisionPendingExit(
   };
 }
 
-function quoteLiteral(value: string, quote: '"' | "'"): string {
-  const escapedSlash = value.replace(/\\/g, "\\\\");
-  return `${quote}${escapedSlash.split(quote).join(`\\${quote}`)}${quote}`;
-}
-
-function getExpressionPrecedence(expression: ExpressionNode): number {
-  if (expression.kind === "binary") {
-    return BINARY_PRECEDENCE[expression.operator] ?? 0;
-  }
-
-  if (expression.kind === "unary") {
-    return UNARY_PRECEDENCE;
-  }
-
-  return Number.POSITIVE_INFINITY;
-}
-
-function serializeExpression(expression: ExpressionNode, parentPrecedence = 0): string {
-  switch (expression.kind) {
-    case "identifier":
-      return expression.name;
-    case "arrayAccess":
-      return `${expression.name}[${expression.indices
-        .map((indexExpression) => serializeExpression(indexExpression))
-        .join(", ")}]`;
-    case "call":
-      return `${expression.name}(${expression.args.map((arg) => serializeExpression(arg)).join(", ")})`;
-    case "literal": {
-      if (expression.literalType === "STRING") {
-        return quoteLiteral(String(expression.value), '"');
-      }
-
-      if (expression.literalType === "CHAR") {
-        return quoteLiteral(String(expression.value), "'");
-      }
-
-      if (expression.literalType === "BOOLEAN") {
-        return expression.value ? "TRUE" : "FALSE";
-      }
-
-      return String(expression.value);
-    }
-    case "unary": {
-      const operand = serializeExpression(expression.operand, UNARY_PRECEDENCE);
-      const serialized = expression.operator === "NOT" ? `NOT ${operand}` : `-${operand}`;
-      return UNARY_PRECEDENCE < parentPrecedence ? `(${serialized})` : serialized;
-    }
-    case "binary": {
-      const precedence = getExpressionPrecedence(expression);
-      const isRightAssociative = expression.operator === "^";
-      const left = serializeExpression(expression.left, isRightAssociative ? precedence + 1 : precedence);
-      const right = serializeExpression(expression.right, isRightAssociative ? precedence : precedence + 1);
-      const serialized = `${left} ${expression.operator} ${right}`;
-      return precedence < parentPrecedence ? `(${serialized})` : serialized;
-    }
-    default:
-      return "";
-  }
-}
-
-function serializeAssignableTarget(target: IdentifierNode | ArrayAccessNode): string {
-  if (target.kind === "identifier") {
-    return target.name;
-  }
-
-  return `${target.name}[${target.indices
-    .map((indexExpression) => serializeExpression(indexExpression))
-    .join(", ")}]`;
-}
-
-function extractNormalizedSpanLines(sourceLines: string[], span: SourceSpan): string[] {
-  const startIndex = Math.max(0, span.startLine - 1);
-  const endIndex = Math.min(sourceLines.length - 1, span.endLine - 1);
-  if (sourceLines.length === 0 || startIndex > endIndex) {
-    return [];
-  }
-
-  const lines = sourceLines.slice(startIndex, endIndex + 1).map((line, index, allLines) => {
-    if (allLines.length === 1) {
-      return line.slice(Math.max(0, span.startColumn - 1), Math.max(0, span.endColumn));
-    }
-
-    if (index === 0) {
-      return line.slice(Math.max(0, span.startColumn - 1));
-    }
-
-    if (index === allLines.length - 1) {
-      return line.slice(0, Math.max(0, span.endColumn));
-    }
-
-    return line;
-  });
-
-  return lines.map((line) => line.trimEnd());
-}
-
-function extractProcessLines(sourceLines: string[], statements: StatementNode[]): string[] {
-  return statements.flatMap((statement) => extractNormalizedSpanLines(sourceLines, statement.span));
-}
-
-function extractIfMetadata(
-  sourceLines: string[],
-  statement: IfStatementNode,
-): Pick<FlowchartNodeData, "trueLabel" | "falseLabel" | "hasElseBranch"> {
-  const lines = extractNormalizedSpanLines(sourceLines, statement.span);
-  const branchComments = lines
-    .map((line) => line.trim())
-    .map((line) => line.match(FLOWCHART_BRANCH_COMMENT_RE))
-    .filter((match): match is RegExpMatchArray => Boolean(match));
-
+function layoutSimpleNode(
+  context: LayoutContext,
+  x: number,
+  y: number,
+  type: FlowchartNodeType,
+  data: FlowchartNodeData,
+): LayoutResult {
+  const node = createNode(context, type, data, x, y);
   return {
-    trueLabel: branchComments[0]?.[1]?.trim() || "Yes",
-    falseLabel: branchComments[1]?.[1]?.trim() || "No",
-    hasElseBranch: lines.some((line) => line.trim().toUpperCase() === "ELSE"),
+    entryId: node.id,
+    pendingExits: [{ nodeId: node.id }],
+    nextY: y + getEstimatedNodeHeight(type, data) + FLOWCHART_VERTICAL_GAP,
   };
 }
 
-function serializeForLoopHeader(statement: ForStatementNode): string {
-  const step = statement.stepValue ? ` STEP ${serializeExpression(statement.stepValue)}` : "";
-  return `${statement.iterator.name} <- ${serializeExpression(statement.startValue)} TO ${serializeExpression(
-    statement.endValue,
-  )}${step}`;
-}
-
-function extractForIteratorFromHeader(header: string): string | undefined {
-  return header.match(/^([A-Za-z][A-Za-z0-9]*)\s*(?:←|<-)/)?.[1];
-}
-
-function isStructuredStatement(statement: StatementNode): boolean {
-  return (
-    statement.kind === "input" ||
-    statement.kind === "output" ||
-    statement.kind === "callStatement" ||
-    statement.kind === "if" ||
-    statement.kind === "for" ||
-    statement.kind === "while"
+function layoutTerminator(context: LayoutContext, x: number, y: number, item: TerminatorItem): LayoutResult {
+  return layoutSimpleNode(
+    context,
+    x,
+    y,
+    "terminator",
+    createFlowchartNodeData("terminator", {
+      label: item.terminatorKind === "start" ? "Start" : "End",
+      terminatorKind: item.terminatorKind,
+      ...(item.commentLine ? { commentLine: item.commentLine } : {}),
+    }),
   );
-}
-
-function collectTopLevelItems(sourceLines: string[], statements: StatementNode[]): LayoutItem[] {
-  const items: LayoutItem[] = [];
-  let lineCursor = 1;
-
-  const appendTerminatorComments = (fromLine: number, toLine: number) => {
-    for (let lineNumber = fromLine; lineNumber <= toLine; lineNumber += 1) {
-      const line = sourceLines[lineNumber - 1]?.trim() ?? "";
-      if (FLOWCHART_START_COMMENT_RE.test(line)) {
-        items.push({ kind: "terminator", label: "Start" });
-      } else if (FLOWCHART_END_COMMENT_RE.test(line)) {
-        items.push({ kind: "terminator", label: "End" });
-      }
-    }
-  };
-
-  for (const statement of statements) {
-    appendTerminatorComments(lineCursor, statement.span.startLine - 1);
-    items.push({ kind: "statement", statement });
-    lineCursor = statement.span.endLine + 1;
-  }
-
-  appendTerminatorComments(lineCursor, sourceLines.length);
-  return items;
-}
-
-function withImplicitTopLevelTerminators(items: LayoutItem[]): LayoutItem[] {
-  if (items.length === 0) {
-    return [];
-  }
-
-  const nextItems = [...items];
-  const firstItem = nextItems[0];
-  const lastItem = nextItems[nextItems.length - 1];
-
-  if (!(firstItem.kind === "terminator" && firstItem.label === "Start")) {
-    nextItems.unshift({ kind: "terminator", label: "Start" });
-  }
-
-  if (!(lastItem.kind === "terminator" && lastItem.label === "End")) {
-    nextItems.push({ kind: "terminator", label: "End" });
-  }
-
-  return nextItems;
 }
 
 function layoutProcessLines(
@@ -585,156 +415,57 @@ function layoutProcessLines(
   y: number,
   processLines: string[],
 ): LayoutResult {
-  const processData = buildProcessNodeData(processLines);
-  const processNode = createNode(context, "process", processData, x, y);
-  return {
-    entryId: processNode.id,
-    pendingExits: [{ nodeId: processNode.id }],
-    nextY: y + getEstimatedNodeHeight("process", processData) + FLOWCHART_VERTICAL_GAP,
-  };
+  return layoutSimpleNode(context, x, y, "process", buildProcessNodeData(processLines));
 }
 
-function layoutWhileStatement(
+// Decision with a loop body on the "true" handle that flows back into the decision.
+function layoutLoop(
   context: LayoutContext,
   x: number,
   y: number,
-  statement: WhileStatementNode,
+  nodeData: FlowchartNodeData,
+  layoutBody: (x: number, y: number) => LayoutResult,
 ): LayoutResult {
-  const nodeData = createFlowchartNodeData("decision", {
-    content: serializeExpression(statement.condition),
-    trueLabel: "Yes",
-    falseLabel: "No",
-    controlKind: "while",
-    loopBodyHandle: "true",
-    trueBranchEmpty: statement.body.length === 0,
-    falseBranchEmpty: true,
-  });
   const decisionNode = createNode(context, "decision", nodeData, x, y);
   const bodyStartY = y + getEstimatedNodeHeight("decision", nodeData) + FLOWCHART_BRANCH_VERTICAL_GAP;
-  let bodyNextY = bodyStartY;
+  const body = layoutBody(x + FLOWCHART_BRANCH_HORIZONTAL_GAP, bodyStartY);
 
-  if (statement.body.length === 0) {
-    pushEdge(context, decisionNode.id, decisionNode.id, {
-      sourceHandle: "true",
-      label: nodeData.trueLabel || "Yes",
-    });
-  } else {
-    const bodyLayout = layoutItems(
-      context,
-      x + FLOWCHART_BRANCH_HORIZONTAL_GAP,
-      bodyStartY,
-      statement.body.map((bodyStatement) => ({ kind: "statement", statement: bodyStatement })),
-    );
-    bodyNextY = bodyLayout.nextY;
-
-    if (bodyLayout.entryId) {
-      pushEdge(context, decisionNode.id, bodyLayout.entryId, {
-        sourceHandle: "true",
-        label: nodeData.trueLabel || "Yes",
-      });
-    }
-
-    for (const exit of bodyLayout.pendingExits) {
-      pushEdge(context, exit.nodeId, decisionNode.id, {
-        sourceHandle: exit.sourceHandle,
-        label: exit.label,
-      });
-    }
-  }
+  pushEdge(context, decisionNode.id, body.entryId ?? decisionNode.id, {
+    sourceHandle: "true",
+    label: nodeData.trueLabel || "Yes",
+  });
+  connectPendingExits(context, body.pendingExits, decisionNode.id);
 
   return {
     entryId: decisionNode.id,
     pendingExits: [createDecisionPendingExit(decisionNode.id, "false", nodeData)],
-    nextY: Math.max(bodyNextY, bodyStartY) + FLOWCHART_VERTICAL_GAP,
+    nextY: Math.max(body.nextY, bodyStartY) + FLOWCHART_VERTICAL_GAP,
   };
 }
 
-function layoutForStatement(
+// Decision whose "true" and "false" branches rejoin after the node.
+function layoutBranches(
   context: LayoutContext,
   x: number,
   y: number,
-  statement: ForStatementNode,
+  nodeData: FlowchartNodeData,
+  layoutThen: (x: number, y: number) => LayoutResult,
+  layoutElse: (x: number, y: number) => LayoutResult,
 ): LayoutResult {
-  const nodeData = createFlowchartNodeData("decision", {
-    content: serializeForLoopHeader(statement),
-    trueLabel: "Yes",
-    falseLabel: "No",
-    controlKind: "for",
-    loopBodyHandle: "true",
-    forIterator: statement.iterator.name,
-    trueBranchEmpty: statement.body.length === 0,
-    falseBranchEmpty: true,
-  });
-  const decisionNode = createNode(context, "decision", nodeData, x, y);
-  const bodyStartY = y + getEstimatedNodeHeight("decision", nodeData) + FLOWCHART_BRANCH_VERTICAL_GAP;
-  let bodyNextY = bodyStartY;
-
-  if (statement.body.length === 0) {
-    pushEdge(context, decisionNode.id, decisionNode.id, {
-      sourceHandle: "true",
-      label: nodeData.trueLabel || "Yes",
-    });
-  } else {
-    const bodyLayout = layoutItems(
-      context,
-      x + FLOWCHART_BRANCH_HORIZONTAL_GAP,
-      bodyStartY,
-      statement.body.map((bodyStatement) => ({ kind: "statement", statement: bodyStatement })),
-    );
-    bodyNextY = bodyLayout.nextY;
-
-    if (bodyLayout.entryId) {
-      pushEdge(context, decisionNode.id, bodyLayout.entryId, {
-        sourceHandle: "true",
-        label: nodeData.trueLabel || "Yes",
-      });
-    }
-
-    for (const exit of bodyLayout.pendingExits) {
-      pushEdge(context, exit.nodeId, decisionNode.id, {
-        sourceHandle: exit.sourceHandle,
-        label: exit.label,
-      });
-    }
-  }
-
-  return {
-    entryId: decisionNode.id,
-    pendingExits: [createDecisionPendingExit(decisionNode.id, "false", nodeData)],
-    nextY: Math.max(bodyNextY, bodyStartY) + FLOWCHART_VERTICAL_GAP,
-  };
-}
-
-function layoutIfStatement(
-  context: LayoutContext,
-  x: number,
-  y: number,
-  statement: IfStatementNode,
-): LayoutResult {
-  const metadata = extractIfMetadata(context.sourceLines, statement);
-  const nodeData = createFlowchartNodeData("decision", {
-    content: serializeExpression(statement.condition),
-    trueLabel: metadata.trueLabel,
-    falseLabel: metadata.falseLabel,
-    controlKind: "if",
-    hasElseBranch: metadata.hasElseBranch,
-    trueBranchEmpty: statement.thenBody.length === 0,
-    falseBranchEmpty: statement.elseBody.length === 0,
-  });
   const decisionNode = createNode(context, "decision", nodeData, x, y);
   const branchStartY = y + getEstimatedNodeHeight("decision", nodeData) + FLOWCHART_BRANCH_VERTICAL_GAP;
-  const thenLayout = layoutItems(
-    context,
-    x + FLOWCHART_BRANCH_HORIZONTAL_GAP,
-    branchStartY,
-    statement.thenBody.map((bodyStatement) => ({ kind: "statement", statement: bodyStatement })),
-  );
-  const elseLayout = layoutItems(
-    context,
-    x,
-    branchStartY,
-    statement.elseBody.map((bodyStatement) => ({ kind: "statement", statement: bodyStatement })),
-  );
+  const thenStart = context.nodes.length;
+  const thenLayout = layoutThen(x + FLOWCHART_BRANCH_HORIZONTAL_GAP, branchStartY);
+  const elseStart = context.nodes.length;
+  const elseLayout = layoutElse(x, branchStartY);
+  const thenNodes = context.nodes.slice(thenStart, elseStart);
+  const elseNodes = context.nodes.slice(elseStart);
+  if (thenNodes.length && elseNodes.length) {
+    const rightmostElse = Math.max(...elseNodes.map((node) => node.position.x + NODE_DIMENSIONS[(node.data as FlowchartNodeData).type].width));
+    const leftmostThen = Math.min(...thenNodes.map((node) => node.position.x));
+    const shift = Math.max(0, rightmostElse + 64 - leftmostThen);
+    for (const node of thenNodes) node.position.x += shift;
+  }
 
   if (thenLayout.entryId) {
     pushEdge(context, decisionNode.id, thenLayout.entryId, {
@@ -764,6 +495,257 @@ function layoutIfStatement(
   };
 }
 
+// Lays out items in order, merging consecutive plain lines into one process block.
+function layoutSequence<T>(
+  context: LayoutContext,
+  x: number,
+  y: number,
+  items: T[],
+  getProcessLines: (item: T) => string[] | null,
+  layoutItem: (item: T, x: number, y: number) => LayoutResult,
+): LayoutResult {
+  let entryId: string | null = null;
+  let pendingExits: PendingExit[] = [];
+  let currentY = y;
+  let processLines: string[] = [];
+
+  const append = (layout: LayoutResult) => {
+    if (layout.entryId) {
+      connectPendingExits(context, pendingExits, layout.entryId);
+      entryId ??= layout.entryId;
+      pendingExits = layout.pendingExits;
+      currentY = layout.nextY;
+    }
+  };
+
+  const flushProcessLines = () => {
+    if (processLines.length > 0) {
+      append(layoutProcessLines(context, x, currentY, processLines));
+      processLines = [];
+    }
+  };
+
+  for (const item of items) {
+    const lines = getProcessLines(item);
+    if (lines) {
+      processLines.push(...lines);
+      continue;
+    }
+
+    flushProcessLines();
+    append(layoutItem(item, x, currentY));
+  }
+
+  flushProcessLines();
+
+  return {
+    entryId,
+    pendingExits,
+    nextY: currentY,
+  };
+}
+
+function withImplicitTerminators<T extends { kind: string }>(items: T[]): Array<T | TerminatorItem> {
+  if (items.length === 0) {
+    return [];
+  }
+
+  const isTerminator = (item: T, terminatorKind: TerminatorKind) =>
+    item.kind === "terminator" && (item as unknown as TerminatorItem).terminatorKind === terminatorKind;
+
+  return [
+    ...(isTerminator(items[0], "start") ? [] : [{ kind: "terminator", terminatorKind: "start" } as const]),
+    ...items,
+    ...(isTerminator(items[items.length - 1], "end") ? [] : [{ kind: "terminator", terminatorKind: "end" } as const]),
+  ];
+}
+
+function getLineIndent(line: string): number {
+  return line.length - line.trimStart().length;
+}
+
+// Source lines of a statement, kept whole (including trailing comments) and dedented.
+// Falls back to the exact span when the statement shares its first line with earlier code.
+function extractStatementLines(sourceLines: string[], span: SourceSpan): string[] {
+  const lines = sourceLines.slice(span.startLine - 1, span.endLine);
+  const indent = span.startColumn - 1;
+
+  if ((lines[0] ?? "").slice(0, indent).trim().length > 0) {
+    return lines.map((line, index) =>
+      line.slice(index === 0 ? indent : 0, index === lines.length - 1 ? span.endColumn : undefined).trimEnd(),
+    );
+  }
+
+  return lines.map((line) => line.slice(Math.min(indent, getLineIndent(line))).trimEnd());
+}
+
+// Exact source text from the start of one span to the end of another, so literals keep their lexemes.
+function sliceSource(sourceLines: string[], from: SourceSpan, to: SourceSpan = from): string {
+  return sourceLines
+    .slice(from.startLine - 1, to.endLine)
+    .map((line, index, lines) =>
+      line.slice(index === 0 ? from.startColumn - 1 : 0, index === lines.length - 1 ? to.endColumn : undefined).trim(),
+    )
+    .join(" ");
+}
+
+// Statement text after its keyword, e.g. `Name // ask` for `INPUT Name // ask`.
+function getStatementTail(sourceLines: string[], statement: StatementNode): string {
+  return extractStatementLines(sourceLines, statement.span).join(" ").trim().replace(/^\S+\s*/, "");
+}
+
+// The `// ...` part of a line, ignoring `//` inside string and character literals.
+function getLineComment(line: string): string | null {
+  let quote: string | null = null;
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    if (quote) {
+      quote = char === quote ? null : quote;
+    } else if (char === '"' || char === "'") {
+      quote = char;
+    } else if (char === "/" && line[index + 1] === "/") {
+      return line.slice(index).trim();
+    }
+  }
+
+  return null;
+}
+
+// The line holding this IF's own ELSE, searched only between its THEN and ELSE children.
+function findElseLine(sourceLines: string[], statement: IfStatementNode): number | null {
+  const fromLine = (statement.thenBody[statement.thenBody.length - 1]?.span.endLine ?? statement.span.startLine) + 1;
+  const toLine = statement.elseBody[0]?.span.startLine ?? statement.span.endLine;
+  for (let lineNumber = fromLine; lineNumber < toLine; lineNumber += 1) {
+    if (/^ELSE\b/i.test(sourceLines[lineNumber - 1]?.trim() ?? "")) {
+      return lineNumber;
+    }
+  }
+
+  return null;
+}
+
+function extractForIteratorFromHeader(header: string): string | undefined {
+  return header.match(/^([A-Za-z][A-Za-z0-9]*)\s*(?:←|<-)/)?.[1];
+}
+
+function isStructuredStatement(statement: StatementNode): boolean {
+  return (
+    statement.kind === "input" ||
+    statement.kind === "output" ||
+    statement.kind === "callStatement" ||
+    statement.kind === "if" ||
+    statement.kind === "for" ||
+    statement.kind === "while"
+  );
+}
+
+function toStatementItems(statements: StatementNode[]): LayoutItem[] {
+  return statements.map((statement) => ({ kind: "statement", statement }));
+}
+
+// Statements in lines [fromLine, toLine] plus the comments on lines no child statement owns
+// (own-line comments and trailing comments such as `ENDIF // done`).
+function collectItems(
+  sourceLines: string[],
+  statements: StatementNode[],
+  fromLine: number,
+  toLine: number,
+  topLevel = false,
+): LayoutItem[] {
+  const items: LayoutItem[] = [];
+  const pushComments = (from: number, to: number) => {
+    for (let lineNumber = from; lineNumber <= to; lineNumber += 1) {
+      const line = sourceLines[lineNumber - 1]?.trim() ?? "";
+      const comment = getLineComment(line);
+      if (!comment) {
+        continue;
+      }
+
+      if (topLevel && comment === line && (FLOWCHART_START_COMMENT_RE.test(line) || FLOWCHART_END_COMMENT_RE.test(line))) {
+        items.push({
+          kind: "terminator",
+          terminatorKind: FLOWCHART_START_COMMENT_RE.test(line) ? "start" : "end",
+          commentLine: line,
+        });
+      } else {
+        items.push({ kind: "comment", line: comment });
+      }
+    }
+  };
+
+  let lineCursor = fromLine;
+  for (const statement of statements) {
+    pushComments(lineCursor, statement.span.startLine - 1);
+    items.push({ kind: "statement", statement });
+    lineCursor = Math.max(lineCursor, statement.span.endLine + 1);
+  }
+
+  pushComments(lineCursor, toLine);
+  return items;
+}
+
+function layoutLoopStatement(
+  context: LayoutContext,
+  x: number,
+  y: number,
+  statement: WhileStatementNode | ForStatementNode,
+): LayoutResult {
+  const { sourceLines } = context;
+  const items = collectItems(sourceLines, statement.body, statement.span.startLine, statement.span.endLine);
+  const nodeData = createFlowchartNodeData("decision", {
+    ...(statement.kind === "for"
+      ? {
+          content: sliceSource(sourceLines, statement.iterator.span, (statement.stepValue ?? statement.endValue).span),
+          controlKind: "for",
+          forIterator: statement.iterator.name,
+        }
+      : {
+          content: sliceSource(sourceLines, statement.condition.span),
+          controlKind: "while",
+        }),
+    loopBodyHandle: "true",
+    trueBranchEmpty: items.length === 0,
+    falseBranchEmpty: true,
+  });
+
+  return layoutLoop(context, x, y, nodeData, (bodyX, bodyY) => layoutItems(context, bodyX, bodyY, items));
+}
+
+function layoutIfStatement(
+  context: LayoutContext,
+  x: number,
+  y: number,
+  statement: IfStatementNode,
+): LayoutResult {
+  const { sourceLines } = context;
+  const elseLine = findElseLine(sourceLines, statement);
+  const thenItems = collectItems(
+    sourceLines,
+    statement.thenBody,
+    statement.span.startLine,
+    elseLine ? elseLine - 1 : statement.span.endLine,
+  );
+  const elseItems = elseLine
+    ? collectItems(sourceLines, statement.elseBody, elseLine, statement.span.endLine)
+    : toStatementItems(statement.elseBody);
+  const nodeData = createFlowchartNodeData("decision", {
+    content: sliceSource(sourceLines, statement.condition.span),
+    controlKind: "if",
+    hasElseBranch: elseLine !== null || elseItems.length > 0,
+    trueBranchEmpty: thenItems.length === 0,
+    falseBranchEmpty: elseItems.length === 0,
+  });
+
+  return layoutBranches(
+    context,
+    x,
+    y,
+    nodeData,
+    (branchX, branchY) => layoutItems(context, branchX, branchY, thenItems),
+    (branchX, branchY) => layoutItems(context, branchX, branchY, elseItems),
+  );
+}
+
 function layoutStatement(
   context: LayoutContext,
   x: number,
@@ -771,56 +753,37 @@ function layoutStatement(
   statement: StatementNode,
 ): LayoutResult {
   switch (statement.kind) {
-    case "input": {
-      const nodeData = createFlowchartNodeData("inputOutput", {
-        ioType: "input",
-        label: "Input",
-        content: serializeAssignableTarget(statement.target),
-      });
-      const inputNode = createNode(context, "inputOutput", nodeData, x, y);
-      return {
-        entryId: inputNode.id,
-        pendingExits: [{ nodeId: inputNode.id }],
-        nextY: y + getEstimatedNodeHeight("inputOutput", nodeData) + FLOWCHART_VERTICAL_GAP,
-      };
-    }
-    case "output": {
-      const nodeData = createFlowchartNodeData("inputOutput", {
-        ioType: "output",
-        label: "Output",
-        content: statement.values.map((value) => serializeExpression(value)).join(", "),
-      });
-      const outputNode = createNode(context, "inputOutput", nodeData, x, y);
-      return {
-        entryId: outputNode.id,
-        pendingExits: [{ nodeId: outputNode.id }],
-        nextY: y + getEstimatedNodeHeight("inputOutput", nodeData) + FLOWCHART_VERTICAL_GAP,
-      };
-    }
-    case "callStatement": {
-      const content = `${statement.name}(${statement.args
-        .map((argument) => serializeExpression(argument))
-        .join(", ")})`;
-      const nodeData = createFlowchartNodeData("subroutine", {
-        label: "Subroutine",
-        content,
-        subroutineName: statement.name,
-      });
-      const subroutineNode = createNode(context, "subroutine", nodeData, x, y);
-      return {
-        entryId: subroutineNode.id,
-        pendingExits: [{ nodeId: subroutineNode.id }],
-        nextY: y + getEstimatedNodeHeight("subroutine", nodeData) + FLOWCHART_VERTICAL_GAP,
-      };
-    }
+    case "input":
+    case "output":
+      return layoutSimpleNode(
+        context,
+        x,
+        y,
+        "inputOutput",
+        createFlowchartNodeData("inputOutput", {
+          ioType: statement.kind,
+          content: getStatementTail(context.sourceLines, statement),
+        }),
+      );
+    case "callStatement":
+      return layoutSimpleNode(
+        context,
+        x,
+        y,
+        "subroutine",
+        createFlowchartNodeData("subroutine", {
+          label: "Subroutine",
+          content: getStatementTail(context.sourceLines, statement),
+          subroutineName: statement.name,
+        }),
+      );
     case "if":
       return layoutIfStatement(context, x, y, statement);
     case "for":
-      return layoutForStatement(context, x, y, statement);
     case "while":
-      return layoutWhileStatement(context, x, y, statement);
+      return layoutLoopStatement(context, x, y, statement);
     default:
-      return layoutProcessLines(context, x, y, extractProcessLines(context.sourceLines, [statement]));
+      return layoutProcessLines(context, x, y, extractStatementLines(context.sourceLines, statement.span));
   }
 }
 
@@ -830,67 +793,27 @@ function layoutItems(
   y: number,
   items: LayoutItem[],
 ): LayoutResult {
-  let entryId: string | null = null;
-  let pendingExits: PendingExit[] = [];
-  let currentY = y;
-  let processStatements: StatementNode[] = [];
-
-  const flushProcessStatements = () => {
-    if (processStatements.length === 0) {
-      return;
-    }
-
-    const processLayout = layoutProcessLines(
-      context,
-      x,
-      currentY,
-      extractProcessLines(context.sourceLines, processStatements),
-    );
-    if (processLayout.entryId) {
-      connectPendingExits(context, pendingExits, processLayout.entryId);
-      entryId ??= processLayout.entryId;
-      pendingExits = processLayout.pendingExits;
-      currentY = processLayout.nextY;
-    }
-    processStatements = [];
-  };
-
-  for (const item of items) {
-    if (item.kind === "statement" && !isStructuredStatement(item.statement)) {
-      processStatements.push(item.statement);
-      continue;
-    }
-
-    flushProcessStatements();
-
-    const layout =
-      item.kind === "terminator"
-        ? (() => {
-            const nodeData = createFlowchartNodeData("terminator", { label: item.label });
-            const node = createNode(context, "terminator", nodeData, x, currentY);
-            return {
-              entryId: node.id,
-              pendingExits: [{ nodeId: node.id }],
-              nextY: currentY + getEstimatedNodeHeight("terminator", nodeData) + FLOWCHART_VERTICAL_GAP,
-            } satisfies LayoutResult;
-          })()
-        : layoutStatement(context, x, currentY, item.statement);
-
-    if (layout.entryId) {
-      connectPendingExits(context, pendingExits, layout.entryId);
-      entryId ??= layout.entryId;
-      pendingExits = layout.pendingExits;
-      currentY = layout.nextY;
-    }
-  }
-
-  flushProcessStatements();
-
-  return {
-    entryId,
-    pendingExits,
-    nextY: currentY,
-  };
+  return layoutSequence(
+    context,
+    x,
+    y,
+    items,
+    (item) => {
+      if (item.kind === "comment") {
+        return [item.line];
+      }
+      if (item.kind === "statement" && !isStructuredStatement(item.statement)) {
+        return extractStatementLines(context.sourceLines, item.statement.span);
+      }
+      return null;
+    },
+    (item, itemX, itemY) =>
+      item.kind === "statement"
+        ? layoutStatement(context, itemX, itemY, item.statement)
+        : item.kind === "terminator"
+          ? layoutTerminator(context, itemX, itemY, item)
+          : layoutProcessLines(context, itemX, itemY, [item.line]),
+  );
 }
 
 function buildAstFlowchart(source: string): FlowchartGraphSnapshot | null {
@@ -912,7 +835,7 @@ function buildAstFlowchart(source: string): FlowchartGraphSnapshot | null {
     context,
     FLOWCHART_NODE_X,
     FLOWCHART_NODE_Y,
-    withImplicitTopLevelTerminators(collectTopLevelItems(sourceLines, ast.body)),
+    withImplicitTerminators(collectItems(sourceLines, ast.body, 1, sourceLines.length, true)),
   );
   return {
     nodes: context.nodes,
@@ -962,7 +885,8 @@ function parseFallbackItems(
     if (FLOWCHART_START_COMMENT_RE.test(trimmed) || FLOWCHART_END_COMMENT_RE.test(trimmed)) {
       items.push({
         kind: "terminator",
-        label: FLOWCHART_START_COMMENT_RE.test(trimmed) ? "Start" : "End",
+        terminatorKind: FLOWCHART_START_COMMENT_RE.test(trimmed) ? "start" : "end",
+        commentLine: trimmed,
       });
       index += 1;
       continue;
@@ -1055,183 +979,64 @@ function parseFallbackItems(
   return { items, nextIndex: index, stopKind: null };
 }
 
-function withImplicitFallbackTerminators(items: FallbackLayoutItem[]): FallbackLayoutItem[] {
-  if (items.length === 0) {
-    return [];
-  }
-
-  const nextItems = [...items];
-  const firstItem = nextItems[0];
-  const lastItem = nextItems[nextItems.length - 1];
-
-  if (!(firstItem.kind === "terminator" && firstItem.label === "Start")) {
-    nextItems.unshift({ kind: "terminator", label: "Start" });
-  }
-
-  if (!(lastItem.kind === "terminator" && lastItem.label === "End")) {
-    nextItems.push({ kind: "terminator", label: "End" });
-  }
-
-  return nextItems;
-}
-
-function layoutFallbackLoop(
-  context: LayoutContext,
-  x: number,
-  y: number,
-  item: Extract<FallbackLayoutItem, { kind: "loop" }>,
-): LayoutResult {
-  const nodeData = createFlowchartNodeData("decision", {
-    content: item.condition,
-    trueLabel: "Yes",
-    falseLabel: "No",
-    controlKind: item.controlKind,
-    loopBodyHandle: "true",
-    forIterator: item.iterator,
-    trueBranchEmpty: item.bodyItems.length === 0,
-    falseBranchEmpty: true,
-  });
-  const decisionNode = createNode(context, "decision", nodeData, x, y);
-  const bodyStartY = y + getEstimatedNodeHeight("decision", nodeData) + FLOWCHART_BRANCH_VERTICAL_GAP;
-  let bodyNextY = bodyStartY;
-
-  if (item.bodyItems.length === 0) {
-    pushEdge(context, decisionNode.id, decisionNode.id, {
-      sourceHandle: "true",
-      label: nodeData.trueLabel || "Yes",
-    });
-  } else {
-    const bodyLayout = layoutFallbackItems(context, x + FLOWCHART_BRANCH_HORIZONTAL_GAP, bodyStartY, item.bodyItems);
-    bodyNextY = bodyLayout.nextY;
-
-    if (bodyLayout.entryId) {
-      pushEdge(context, decisionNode.id, bodyLayout.entryId, {
-        sourceHandle: "true",
-        label: nodeData.trueLabel || "Yes",
-      });
-    }
-
-    for (const exit of bodyLayout.pendingExits) {
-      pushEdge(context, exit.nodeId, decisionNode.id, {
-        sourceHandle: exit.sourceHandle,
-        label: exit.label,
-      });
-    }
-  }
-
-  return {
-    entryId: decisionNode.id,
-    pendingExits: [createDecisionPendingExit(decisionNode.id, "false", nodeData)],
-    nextY: Math.max(bodyNextY, bodyStartY) + FLOWCHART_VERTICAL_GAP,
-  };
-}
-
-function layoutFallbackIf(
-  context: LayoutContext,
-  x: number,
-  y: number,
-  item: Extract<FallbackLayoutItem, { kind: "if" }>,
-): LayoutResult {
-  const nodeData = createFlowchartNodeData("decision", {
-    content: item.condition,
-    trueLabel: "Yes",
-    falseLabel: "No",
-    controlKind: "if",
-    hasElseBranch: item.hasElseBranch,
-    trueBranchEmpty: item.thenItems.length === 0,
-    falseBranchEmpty: item.elseItems.length === 0,
-  });
-  const decisionNode = createNode(context, "decision", nodeData, x, y);
-  const branchStartY = y + getEstimatedNodeHeight("decision", nodeData) + FLOWCHART_BRANCH_VERTICAL_GAP;
-  const thenLayout = layoutFallbackItems(context, x + FLOWCHART_BRANCH_HORIZONTAL_GAP, branchStartY, item.thenItems);
-  const elseLayout = layoutFallbackItems(context, x, branchStartY, item.elseItems);
-
-  if (thenLayout.entryId) {
-    pushEdge(context, decisionNode.id, thenLayout.entryId, {
-      sourceHandle: "true",
-      label: nodeData.trueLabel || "Yes",
-    });
-  }
-
-  if (elseLayout.entryId) {
-    pushEdge(context, decisionNode.id, elseLayout.entryId, {
-      sourceHandle: "false",
-      label: nodeData.falseLabel || "No",
-    });
-  }
-
-  return {
-    entryId: decisionNode.id,
-    pendingExits: [
-      ...(thenLayout.entryId
-        ? thenLayout.pendingExits
-        : [createDecisionPendingExit(decisionNode.id, "true", nodeData)]),
-      ...(elseLayout.entryId
-        ? elseLayout.pendingExits
-        : [createDecisionPendingExit(decisionNode.id, "false", nodeData)]),
-    ],
-    nextY: Math.max(thenLayout.nextY, elseLayout.nextY, branchStartY) + FLOWCHART_VERTICAL_GAP,
-  };
-}
-
 function layoutFallbackItem(
   context: LayoutContext,
   x: number,
   y: number,
-  item: Exclude<FallbackLayoutItem, { kind: "processLine" }>,
+  item: FallbackLayoutItem,
 ): LayoutResult {
   switch (item.kind) {
-    case "terminator": {
-      const nodeData = createFlowchartNodeData("terminator", { label: item.label });
-      const node = createNode(context, "terminator", nodeData, x, y);
-      return {
-        entryId: node.id,
-        pendingExits: [{ nodeId: node.id }],
-        nextY: y + getEstimatedNodeHeight("terminator", nodeData) + FLOWCHART_VERTICAL_GAP,
-      };
-    }
-    case "input": {
-      const nodeData = createFlowchartNodeData("inputOutput", {
-        ioType: "input",
-        label: "Input",
-        content: item.content,
-      });
-      const node = createNode(context, "inputOutput", nodeData, x, y);
-      return {
-        entryId: node.id,
-        pendingExits: [{ nodeId: node.id }],
-        nextY: y + getEstimatedNodeHeight("inputOutput", nodeData) + FLOWCHART_VERTICAL_GAP,
-      };
-    }
-    case "output": {
-      const nodeData = createFlowchartNodeData("inputOutput", {
-        ioType: "output",
-        label: "Output",
-        content: item.content,
-      });
-      const node = createNode(context, "inputOutput", nodeData, x, y);
-      return {
-        entryId: node.id,
-        pendingExits: [{ nodeId: node.id }],
-        nextY: y + getEstimatedNodeHeight("inputOutput", nodeData) + FLOWCHART_VERTICAL_GAP,
-      };
-    }
-    case "subroutine": {
-      const nodeData = createFlowchartNodeData("subroutine", {
-        label: "Subroutine",
-        content: item.content,
-      });
-      const node = createNode(context, "subroutine", nodeData, x, y);
-      return {
-        entryId: node.id,
-        pendingExits: [{ nodeId: node.id }],
-        nextY: y + getEstimatedNodeHeight("subroutine", nodeData) + FLOWCHART_VERTICAL_GAP,
-      };
-    }
+    case "terminator":
+      return layoutTerminator(context, x, y, item);
+    case "processLine":
+      return layoutProcessLines(context, x, y, [item.line]);
+    case "input":
+    case "output":
+      return layoutSimpleNode(
+        context,
+        x,
+        y,
+        "inputOutput",
+        createFlowchartNodeData("inputOutput", { ioType: item.kind, content: item.content }),
+      );
+    case "subroutine":
+      return layoutSimpleNode(
+        context,
+        x,
+        y,
+        "subroutine",
+        createFlowchartNodeData("subroutine", { label: "Subroutine", content: item.content }),
+      );
     case "if":
-      return layoutFallbackIf(context, x, y, item);
+      return layoutBranches(
+        context,
+        x,
+        y,
+        createFlowchartNodeData("decision", {
+          content: item.condition,
+          controlKind: "if",
+          hasElseBranch: item.hasElseBranch,
+          trueBranchEmpty: item.thenItems.length === 0,
+          falseBranchEmpty: item.elseItems.length === 0,
+        }),
+        (branchX, branchY) => layoutFallbackItems(context, branchX, branchY, item.thenItems),
+        (branchX, branchY) => layoutFallbackItems(context, branchX, branchY, item.elseItems),
+      );
     case "loop":
-      return layoutFallbackLoop(context, x, y, item);
+      return layoutLoop(
+        context,
+        x,
+        y,
+        createFlowchartNodeData("decision", {
+          content: item.condition,
+          controlKind: item.controlKind,
+          loopBodyHandle: "true",
+          forIterator: item.iterator,
+          trueBranchEmpty: item.bodyItems.length === 0,
+          falseBranchEmpty: true,
+        }),
+        (bodyX, bodyY) => layoutFallbackItems(context, bodyX, bodyY, item.bodyItems),
+      );
   }
 }
 
@@ -1241,49 +1046,14 @@ function layoutFallbackItems(
   y: number,
   items: FallbackLayoutItem[],
 ): LayoutResult {
-  let entryId: string | null = null;
-  let pendingExits: PendingExit[] = [];
-  let currentY = y;
-  let processLines: string[] = [];
-
-  const flushProcessLines = () => {
-    if (processLines.length === 0) {
-      return;
-    }
-
-    const processLayout = layoutProcessLines(context, x, currentY, processLines);
-    if (processLayout.entryId) {
-      connectPendingExits(context, pendingExits, processLayout.entryId);
-      entryId ??= processLayout.entryId;
-      pendingExits = processLayout.pendingExits;
-      currentY = processLayout.nextY;
-    }
-    processLines = [];
-  };
-
-  for (const item of items) {
-    if (item.kind === "processLine") {
-      processLines.push(item.line);
-      continue;
-    }
-
-    flushProcessLines();
-    const layout = layoutFallbackItem(context, x, currentY, item);
-    if (layout.entryId) {
-      connectPendingExits(context, pendingExits, layout.entryId);
-      entryId ??= layout.entryId;
-      pendingExits = layout.pendingExits;
-      currentY = layout.nextY;
-    }
-  }
-
-  flushProcessLines();
-
-  return {
-    entryId,
-    pendingExits,
-    nextY: currentY,
-  };
+  return layoutSequence(
+    context,
+    x,
+    y,
+    items,
+    (item) => (item.kind === "processLine" ? [item.line] : null),
+    (item, itemX, itemY) => layoutFallbackItem(context, itemX, itemY, item),
+  );
 }
 
 function buildFallbackFlowchart(source: string): FlowchartGraphSnapshot {
@@ -1306,7 +1076,7 @@ function buildFallbackFlowchart(source: string): FlowchartGraphSnapshot {
     context,
     FLOWCHART_NODE_X,
     FLOWCHART_NODE_Y,
-    withImplicitFallbackTerminators(parsed.items),
+    withImplicitTerminators(parsed.items),
   );
 
   return {
@@ -1344,8 +1114,13 @@ export function getNodePrimaryText(data: FlowchartNodeData): string {
   return label;
 }
 
+// Nodes saved before `terminatorKind` existed fall back to their label.
+export function getTerminatorKind(data: FlowchartNodeData): TerminatorKind {
+  return data.terminatorKind ?? (data.label.trim().toLowerCase().includes("start") ? "start" : "end");
+}
+
 function isStartNode(data: FlowchartNodeData): boolean {
-  return data.type === "terminator" && data.label.trim().toLowerCase().includes("start");
+  return data.type === "terminator" && getTerminatorKind(data) === "start";
 }
 
 function compareNodes(a: Node, b: Node): number {
@@ -1358,7 +1133,8 @@ function compareNodes(a: Node, b: Node): number {
 function buildNodeLines(data: FlowchartNodeData): string[] {
   switch (data.type) {
     case "terminator":
-      return [isStartNode(data) ? "// Start" : "// End"];
+      // Terminators only appear in code when the source already had a `// Start` / `// End` line.
+      return typeof data.commentLine === "string" && data.commentLine ? [data.commentLine] : [];
     case "process": {
       const statements = getProcessStatements(data);
       if (statements.length > 0) {
@@ -1499,33 +1275,28 @@ function getReachableDistances(
   return distances;
 }
 
+// Whether a branch flows back into `targetId` without passing through `blockedIds`
+// (enclosing decisions and stop nodes), so an outer loop's back edge doesn't count.
 function branchReachesNode(
   index: GraphIndex,
   startId: string | null,
   targetId: string,
+  blockedIds: ReadonlySet<string>,
 ): boolean {
-  if (!startId) {
-    return false;
-  }
-
-  if (startId === targetId) {
-    return true;
-  }
-
   const visited = new Set<string>();
-  const queue = [startId];
+  const queue = startId ? [startId] : [];
 
-  while (queue.length > 0) {
-    const currentId = queue.shift();
-    if (!currentId || visited.has(currentId)) {
+  for (let position = 0; position < queue.length; position += 1) {
+    const currentId = queue[position];
+    if (currentId === targetId) {
+      return true;
+    }
+    if (visited.has(currentId) || blockedIds.has(currentId)) {
       continue;
     }
 
     visited.add(currentId);
     for (const edge of index.outgoing.get(currentId) ?? []) {
-      if (edge.target === targetId) {
-        return true;
-      }
       queue.push(edge.target);
     }
   }
@@ -1638,8 +1409,15 @@ function emitSequence(
       const { trueEdge, falseEdge } = getDecisionBranchEdges(index, node.id);
       const trueStartId = trueEdge?.target ?? null;
       const falseStartId = falseEdge?.target ?? null;
-      const trueLoops = branchReachesNode(index, trueStartId, node.id);
-      const falseLoops = branchReachesNode(index, falseStartId, node.id);
+      const isLoopNode = nodeData.controlKind === "for" || nodeData.controlKind === "while";
+      const blockedIds = new Set([...stopIds, ...activePath]);
+      // Imported loops say which handle is the body; only user-drawn decisions are inferred.
+      const trueLoops = isLoopNode
+        ? nodeData.loopBodyHandle !== "false"
+        : branchReachesNode(index, trueStartId, node.id, blockedIds);
+      const falseLoops = isLoopNode
+        ? nodeData.loopBodyHandle === "false"
+        : branchReachesNode(index, falseStartId, node.id, blockedIds);
       visited.add(node.id);
 
       if (trueLoops !== falseLoops && (trueLoops || falseLoops)) {
