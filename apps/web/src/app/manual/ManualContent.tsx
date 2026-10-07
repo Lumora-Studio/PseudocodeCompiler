@@ -391,6 +391,7 @@ export default function ManualContent({ onClose, isModal = false }: ManualConten
             )}
           </div>
 
+          <p className="mt-4 text-sm text-[var(--accent)]"><Link href="/flowcharts" className="underline">Learn how to turn pseudocode into a flowchart</Link></p>
           <div className="mt-5 grid gap-3 md:grid-cols-2">
             <div className="manual-card" style={{ borderRadius: 14 }}>
               <div className="p-3.5">

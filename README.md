@@ -311,3 +311,44 @@ pnpm test
 ## License
 
 Released under the [GNU General Public License v3.0](./LICENSE).
+
+## Flowchart editor
+
+Enable the beta flowchart view in Settings. Click, keyboard-activate, or drag a
+palette block to add it, then select it to open the Inspector. Each output handle
+accepts one connection; multiple branches can join at an input. Start cannot
+receive connections and End cannot send them.
+
+The chart preserves comments and literal spelling when generating code, and does
+not rewrite the document when opened. Undo/redo stores the last 50 chart edits.
+Clear Canvas keeps the source until Generate Code is pressed. FOR, WHILE and IF
+blocks are expanded; REPEAT, CASE and procedure definitions are retained inside
+process blocks. The public `/flowcharts` guide explains these limits and includes
+an example.
+
+## Search configuration
+
+Set `NEXT_PUBLIC_SITE_URL` to this application's final public origin, including
+`https://` and the correct `www` hostname if applicable. Do not point it at the
+separate pseudo.build application unless this repository is actually deployed
+there. If omitted on Vercel, `VERCEL_PROJECT_PRODUCTION_URL` is used. Without a
+public origin the app emits noindex metadata and an empty sitemap. Preview,
+development and Electron builds also use noindex.
+
+Optional ownership-verification variables:
+
+- `GOOGLE_SITE_VERIFICATION`: the Google Search Console HTML verification token.
+- `BING_SITE_VERIFICATION`: the Bing Webmaster Tools HTML verification token.
+
+Redeploy after setting these values. Check `/robots.txt`, `/sitemap.xml`, and the
+canonical URL in the rendered HTML. Configure host redirects in the hosting
+provider so the canonical origin responds directly rather than redirecting.
+Submit `/sitemap.xml` in Google Search Console and Bing Webmaster Tools, then
+inspect the home page, `/manual`, and `/flowcharts` for indexing errors. DuckDuckGo
+largely sources its traditional links from Bing, so Bing indexing matters there
+as well. Search rankings depend on content, competition and other signals; these
+changes do not guarantee a position.
+
+References: [Google SEO guide](https://developers.google.com/search/docs/fundamentals/seo-starter-guide),
+[Bing guidelines](https://www.bing.com/webmasters/help/bing-webmaster-guidelines-30fba23a),
+[DuckDuckGo result sources](https://duckduckgo.com/duckduckgo-help-pages/results/sources).

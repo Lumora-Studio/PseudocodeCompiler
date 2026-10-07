@@ -1189,11 +1189,16 @@ export default function HomePage() {
               Workspace
             </p>
             <h1 className="mt-3 text-2xl font-semibold text-[var(--text)]">
-              Loading workspace…
+              Online pseudocode compiler
             </h1>
             <p className="mt-3 text-sm leading-6 text-[var(--text2)]">
-              Preparing the editor layout and runtime panels.
+              Write Cambridge-style pseudocode, compile it to Python, and explore algorithms with editable flowcharts. Practise with worked IGCSE examples in the manual.
             </p>
+            <p role="status" className="mt-3 text-sm text-[var(--text2)]">Loading workspace…</p>
+            <nav aria-label="Learning resources" className="mt-4 flex gap-4 text-sm text-[var(--accent)]">
+              <a href="/manual" target="_blank" rel="noopener noreferrer" className="underline">Pseudocode manual</a>
+              <a href="/flowcharts" target="_blank" rel="noopener noreferrer" className="underline">Flowchart guide</a>
+            </nav>
           </section>
         </div>
       </main>
@@ -1262,7 +1267,7 @@ export default function HomePage() {
                 </div>
 
                 <div className="flex flex-1 items-center justify-center">
-                  <p className="text-[13px] font-medium text-[var(--text2)]">Pseudocode Compiler</p>
+                  <h1 className="text-[13px] font-medium text-[var(--text2)]">Pseudocode Compiler</h1>
                 </div>
 
                 <div className="flex flex-1 items-center justify-end gap-3">
@@ -1680,12 +1685,14 @@ export default function HomePage() {
         </div>
 
         <div className="flex-1" />
-        <p className="text-[13px] font-medium text-[var(--text2)]">Pseudocode Compiler</p>
+        <h1 className="text-[13px] font-medium text-[var(--text2)]">Pseudocode Compiler</h1>
         <div className="flex-1" />
 
         {/* Toolbar */}
         <div className="app-no-drag flex items-center gap-1.5">
           {renderSaveControl()}
+          <a href="/flowcharts" target="_blank" rel="noopener noreferrer" className="rounded px-2 py-1 text-xs text-[var(--text2)] hover:underline">Flowchart guide</a>
+          <a href="/manual" target="_blank" rel="noopener noreferrer" className="rounded px-2 py-1 text-xs text-[var(--text2)] hover:underline">Docs</a>
           <button
             type="button"
             className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text3)] transition hover:text-[var(--text2)]"
@@ -1789,11 +1796,14 @@ export default function HomePage() {
             {flowchartModeEnabled ? (
               <div
                 aria-hidden={!flowchartVisible}
+                inert={!flowchartVisible}
                 className={`absolute inset-0 z-20 min-h-0 min-w-0 transition-transform duration-500 ease-in-out ${
                   flowchartVisible ? "translate-x-0" : "translate-x-full pointer-events-none"
                 }`}
               >
                 <FlowchartEditor
+                  key={currentDocument?.id}
+                  isVisible={flowchartVisible}
                   source={currentDocument?.source ?? ""}
                   onCodeChange={handleFlowchartCodeChange}
                   onGenerateCode={handleGenerateCode}
