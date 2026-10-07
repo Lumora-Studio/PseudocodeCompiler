@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pseudo Build — write and run pseudocode</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="rail.css">
+<style>
+  .wrap { max-width: 1184px; margin: 0 auto; padding: 0 32px; }
+  .when-dark { display: none; }
+  [data-theme="dark"] .when-dark { display: inline-flex; }
+  [data-theme="dark"] .when-light { display: none; }
+
+  .hero { padding: 96px 0 56px; max-width: 680px; }
+  h1 { font-size: 54px; line-height: 1.06; letter-spacing: -0.03em; font-weight: 600; margin: 0; }
+  .lede { font-size: 19px; line-height: 1.6; color: var(--ink-2); margin: 22px 0 32px; max-width: 34em; }
+  .ctas { display: flex; gap: 10px; align-items: center; }
+  .ctas .btn { height: 44px; padding: 0 20px; }
+  .ctas .note { margin-left: 14px; font-size: 14px; color: var(--ink-3); }
+
+  .preview { border: 1px solid var(--line-2); border-radius: 12px; overflow: hidden; height: 470px; display: grid; }
+  .preview .frame { height: 470px; }
+
+  section.band { padding: 88px 0 0; }
+  h2 { font-size: 30px; line-height: 1.2; letter-spacing: -0.02em; font-weight: 600; margin: 0 0 10px; }
+  .sub { color: var(--ink-2); font-size: 17px; margin: 0; max-width: 36em; }
+  .cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; margin-top: 36px; border-top: 1px solid var(--line); padding-top: 24px; }
+  .cols b { display: block; font-weight: 600; margin-bottom: 6px; }
+  .cols p { margin: 0; color: var(--ink-2); line-height: 1.55; }
+
+  .boards { margin-top: 32px; border-top: 1px solid var(--line); }
+  .boards div { display: grid; grid-template-columns: 340px 1fr; gap: 24px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+  .boards b { font-weight: 500; }
+  .boards span { color: var(--ink-2); }
+
+  .themes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 32px; }
+  .swatch { border-radius: 10px; overflow: hidden; border: 1px solid var(--line-2); }
+  .swatch .code { padding: 14px 16px; }
+  .swatch pre { font-size: 13px; line-height: 22px; }
+  .swatch .name { padding: 10px 16px; font-size: 14px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; color: var(--ink-2); background: var(--bg); }
+  .swatch .name b { font-weight: 500; color: var(--ink); }
+
+  footer { margin-top: 112px; border-top: 1px solid var(--line); }
+  footer .wrap { display: flex; align-items: center; gap: 24px; height: 72px; font-size: 14px; color: var(--ink-2); }
+  footer .end { margin-left: auto; display: flex; gap: 22px; }
+</style>
+</head>
+<body>
+  <header class="topnav">
+    <div class="in">
+      <a class="brand" href="#"><span class="mark">P</span>Pseudo Build</a>
+      <nav><a href="#">Editor</a><a href="#">Practice</a><a href="docs.html">Docs</a><a href="#">Manual</a><a href="#">Blog</a></nav>
+      <div class="end">
+        <a class="lang" href="#">中文</a>
+        <a class="icon-btn" href="#" aria-label="GitHub"><i data-i="out"></i></a>
+        <a class="icon-btn" href="#" aria-label="Switch to dark mode"><span class="when-light"><i data-i="moon"></i></span><span class="when-dark"><i data-i="sun"></i></span></a>
+        <a class="btn btn-primary btn-sm" href="app.html" style="margin-left:8px">Open editor</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="hero">
+      <h1>A quiet place to write and run pseudocode.</h1>
+      <p class="lede">A free, open-source editor and compiler for IGCSE, O Level and A Level Computer Science. Errors point to the exact line, and programs run in your browser.</p>
+      <div class="ctas">
+        <a class="btn btn-primary" href="app.html">Open editor</a>
+        <a class="btn btn-quiet" href="#"><i data-i="shuffle"></i>Practice a question</a>
+        <span class="note">No account needed to write and run</span>
+      </div>
+    </section>
+
+    <div class="preview" aria-label="The editor">
+      <div class="frame">
+        <aside class="rail">
+          <span class="brand"><span class="mark">P</span>Pseudo Build</span>
+          <div class="h">Files <i data-i="plus"></i></div>
+          <a class="f on" href="#"><i data-i="file"></i>sum.pseudo</a>
+          <a class="f" href="#"><i data-i="file"></i>marks.pseudo</a>
+          <a class="f" href="#"><i data-i="file"></i>search.pseudo</a>
+          <div class="foot"><a class="l" href="#"><i data-i="book"></i>Manual</a><a class="l" href="#"><i data-i="sliders"></i>Settings</a></div>
+        </aside>
+        <div class="ed">
+          <div class="ed-top"><span class="tab on">sum.pseudo</span><span class="status"><i class="dot"></i>Compiled</span><a class="btn btn-primary btn-sm" href="#"><i data-i="play"></i>Run</a></div>
+          <div class="code">
+<pre data-hl data-lines>
+// Sum the whole numbers from 1 to 5
+DECLARE Number : INTEGER
+DECLARE Total : INTEGER
+Total ← 0
+FOR Number ← 1 TO 5
+    Total ← Total + Number
+NEXT Number
+OUTPUT "Total = ", Total</pre>
+          </div>
+        </div>
+        <div class="out">
+          <div class="out-top"><span class="tab on">Output</span><span class="tab">Problems</span><span class="meta">Finished in 3 ms</span></div>
+          <pre>Total = 15</pre>
+        </div>
+      </div>
+    </div>
+
+    <section class="band">
+      <h2>Write it, run it, fix it.</h2>
+      <p class="sub">Everything a pseudocode answer needs, and nothing it does not.</p>
+      <div class="cols">
+        <div><b>Compile</b><p>A strict compiler checks your pseudocode and points to the line and column of the first real mistake.</p></div>
+        <div><b>Run</b><p>Programs run on your computer through WebAssembly, including INPUT prompts. Nothing is sent to a server.</p></div>
+        <div><b>Save</b><p>Sign in to save your files and open them on any device. You can write and run code without an account.</p></div>
+      </div>
+    </section>
+
+    <section class="band">
+      <h2>The pseudocode your exam uses.</h2>
+      <p class="sub">The syntax follows the Cambridge conventions, so what you practise here is what you write on paper.</p>
+      <div class="boards">
+        <div><b>IGCSE Computer Science 0478 / 0984</b><span>Variables, selection, loops, arrays and strings.</span></div>
+        <div><b>O Level Computer Science 2210</b><span>The same conventions and the same trace-table habits.</span></div>
+        <div><b>AS &amp; A Level Computer Science 9618</b><span>Procedures, functions, CASE and text files.</span></div>
+      </div>
+    </section>
+
+    <section class="band">
+      <h2>Light, dark, or your own colours.</h2>
+      <p class="sub">Pick a code theme, or make one and keep it. The editor follows your system setting unless you choose.</p>
+      <div class="themes">
+        <div class="swatch"><div class="code" data-syntax="pseudo-light"><pre data-hl>
+FOR Count ← 1 TO 3
+  OUTPUT "Mark ", Count
+NEXT Count</pre></div><div class="name"><b>Pseudo Light</b>Default</div></div>
+        <div class="swatch"><div class="code" data-syntax="pseudo-dark"><pre data-hl>
+FOR Count ← 1 TO 3
+  OUTPUT "Mark ", Count
+NEXT Count</pre></div><div class="name"><b>Pseudo Dark</b>Default</div></div>
+        <div class="swatch"><div class="code" data-syntax="paper"><pre data-hl>
+FOR Count ← 1 TO 3
+  OUTPUT "Mark ", Count
+NEXT Count</pre></div><div class="name"><b>Paper</b>Like the exam</div></div>
+        <div class="swatch"><div class="code" data-syntax="night-shift"><pre data-hl>
+FOR Count ← 1 TO 3
+  OUTPUT "Mark ", Count
+NEXT Count</pre></div><div class="name"><b>Night shift</b>Custom</div></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <span class="brand" style="font-size:15px"><span class="mark">P</span>Pseudo Build</span>
+      <span>Free and open source under GPL v3</span>
+      <div class="end"><a href="#">Privacy</a><a href="#">Terms</a><a href="#">Security</a><a href="#">GitHub</a></div>
+    </div>
+  </footer>
+  <script src="common.js"></script>
+</body>
+</html>

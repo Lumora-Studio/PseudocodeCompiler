@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Loops — Pseudo Build docs</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="rail.css">
+<style>
+  .when-dark { display: none; }
+  [data-theme="dark"] .when-dark { display: inline-flex; }
+  [data-theme="dark"] .when-light { display: none; }
+  .layout { max-width: 1184px; margin: 0 auto; padding: 0 32px; display: grid; grid-template-columns: 220px 1fr 180px; gap: 56px; }
+  .side { padding: 32px 0; font-size: 14px; position: sticky; top: 60px; align-self: start; }
+  .side .h { color: var(--ink-3); font-size: 12.5px; margin: 18px 0 6px; padding: 0 10px; }
+  .side .h:first-child { margin-top: 0; }
+  .side a { display: block; padding: 6px 10px; border-radius: 6px; color: var(--ink-2); }
+  .side a.on { background: var(--surface-2); color: var(--ink); font-weight: 500; }
+  article { padding: 40px 0 96px; max-width: 680px; }
+  .crumb { font-size: 13.5px; color: var(--ink-3); }
+  h1 { font-size: 38px; letter-spacing: -0.02em; font-weight: 600; margin: 8px 0 14px; }
+  h2 { font-size: 21px; font-weight: 600; margin: 40px 0 10px; letter-spacing: -0.01em; }
+  article p { font-size: 16.5px; line-height: 1.7; color: var(--ink-2); margin: 0 0 16px; }
+  article p code, td code { font: 14px var(--mono); background: var(--surface-2); color: var(--ink); padding: 2px 6px; border-radius: 5px; }
+  .example { border: 1px solid var(--line-2); border-radius: 10px; overflow: hidden; margin: 22px 0; }
+  .example .bar { display: flex; align-items: center; height: 42px; padding: 0 8px 0 16px; border-bottom: 1px solid var(--line); background: var(--surface); font: 13px var(--mono); color: var(--ink-2); }
+  .example .bar a { margin-left: auto; font: 500 13.5px var(--sans); color: var(--accent); display: inline-flex; gap: 6px; align-items: center; padding: 6px 10px; }
+  .example .code { padding: 12px 0; }
+  .example .res { border-top: 1px solid var(--line); padding: 10px 16px; font: 13.5px var(--mono); color: var(--syn-text); background: var(--syn-bg); }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; margin-top: 8px; }
+  th { text-align: left; font-weight: 500; color: var(--ink-3); font-size: 13px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  td { padding: 12px 16px 12px 0; border-bottom: 1px solid var(--line); color: var(--ink-2); vertical-align: top; }
+  td:first-child { white-space: nowrap; }
+  .toc { padding: 40px 0; font-size: 13.5px; position: sticky; top: 60px; align-self: start; }
+  .toc b { display: block; font-weight: 500; margin-bottom: 8px; }
+  .toc a { display: block; padding: 4px 0; color: var(--ink-2); }
+  .toc a.on { color: var(--accent); }
+</style>
+</head>
+<body>
+  <header class="topnav">
+    <div class="in">
+      <a class="brand" href="site.html"><span class="mark">P</span>Pseudo Build</a>
+      <nav><a href="#">Editor</a><a href="#">Practice</a><a class="on" href="#">Docs</a><a href="#">Manual</a><a href="#">Blog</a></nav>
+      <div class="end">
+        <a class="lang" href="#">中文</a>
+        <a class="icon-btn" href="#" aria-label="Search docs"><i data-i="search"></i></a>
+        <a class="icon-btn" href="#" aria-label="Switch theme"><span class="when-light"><i data-i="moon"></i></span><span class="when-dark"><i data-i="sun"></i></span></a>
+        <a class="btn btn-primary btn-sm" href="app.html" style="margin-left:8px">Open editor</a>
+      </div>
+    </div>
+  </header>
+  <div class="layout">
+    <nav class="side" aria-label="Docs">
+      <div class="h">Start</div>
+      <a href="#">Introduction</a><a href="#">Your first program</a>
+      <div class="h">Basics</div>
+      <a href="#">Variables and constants</a><a href="#">Input and output</a><a href="#">Operators</a>
+      <div class="h">Control flow</div>
+      <a href="#">Selection</a><a class="on" href="#">Loops</a>
+      <div class="h">Data</div>
+      <a href="#">Arrays</a><a href="#">Strings</a><a href="#">Records</a>
+      <div class="h">Subroutines</div>
+      <a href="#">Procedures</a><a href="#">Functions</a>
+    </nav>
+    <article>
+      <div class="crumb">Control flow</div>
+      <h1>Loops</h1>
+      <p>Use a loop when the same steps run more than once. Choose the loop by asking when you know how many times it runs.</p>
+      <h2>Count-controlled: FOR</h2>
+      <p>Use <code>FOR</code> when the number of repeats is known before the loop starts. The counter moves by 1 unless you add <code>STEP</code>.</p>
+      <div class="example">
+        <div class="bar">times-table.pseudo<a href="app.html?open=times-table.pseudo"><i data-i="play"></i>Open in editor</a></div>
+        <div class="code">
+<pre data-hl data-lines>
+DECLARE Count : INTEGER
+FOR Count ← 1 TO 5
+    OUTPUT Count, " x 7 = ", Count * 7
+NEXT Count</pre>
+        </div>
+        <div class="res">1 x 7 = 7 &nbsp; 2 x 7 = 14 &nbsp; 3 x 7 = 21 &nbsp; …</div>
+      </div>
+      <h2>Which loop to use</h2>
+      <table>
+        <tr><th>Loop</th><th>Use it when</th></tr>
+        <tr><td><code>FOR … NEXT</code></td><td>You know how many times it repeats.</td></tr>
+        <tr><td><code>WHILE … ENDWHILE</code></td><td>It may run zero times. The condition is checked first.</td></tr>
+        <tr><td><code>REPEAT … UNTIL</code></td><td>It must run at least once, such as asking for input.</td></tr>
+      </table>
+    </article>
+    <aside class="toc">
+      <b>On this page</b>
+      <a class="on" href="#">Count-controlled: FOR</a>
+      <a href="#">Which loop to use</a>
+      <a href="#">Pre-condition: WHILE</a>
+      <a href="#">Post-condition: REPEAT</a>
+    </aside>
+  </div>
+  <script src="common.js"></script>
+</body>
+</html>
