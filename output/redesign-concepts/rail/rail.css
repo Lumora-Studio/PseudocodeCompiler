@@ -1,0 +1,135 @@
+/* Pseudo Build — Rail design system.
+   UI colours and syntax colours are separate layers:
+   data-theme switches the interface, data-syntax switches the code colours. */
+
+:root {
+  --bg: #FFFFFF;
+  --surface: #FAFAFA;
+  --surface-2: #F2F2F4;
+  --line: #ECECEE;
+  --line-2: #E0E0E4;
+  --ink: #18191B;
+  --ink-2: #6E7177;
+  --ink-3: #9A9DA3;
+  --accent: #5B4BDB;
+  --accent-ink: #FFFFFF;
+  --accent-soft: #EEECFC;
+  --ok: #2F7D4F;
+  --err: #C8364A;
+  --scrim: rgba(24, 25, 27, .32);
+  --sans: "Instrument Sans", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+  color-scheme: light;
+}
+[data-theme="dark"] {
+  --bg: #161719;
+  --surface: #1B1C1F;
+  --surface-2: #24252A;
+  --line: #26282C;
+  --line-2: #33353B;
+  --ink: #ECECEE;
+  --ink-2: #9A9DA4;
+  --ink-3: #6B6E75;
+  --accent: #8E83F5;
+  --accent-ink: #141416;
+  --accent-soft: #2A2742;
+  --ok: #7FCB97;
+  --err: #F08A98;
+  --scrim: rgba(0, 0, 0, .55);
+  color-scheme: dark;
+}
+
+/* Syntax themes. The default follows the interface theme. */
+:root, [data-syntax="pseudo-light"] {
+  --syn-bg: #FFFFFF; --syn-text: #18191B; --syn-gutter: #BDBFC4; --syn-line: #F6F6F8;
+  --syn-keyword: #5B4BDB; --syn-type: #9A5B13; --syn-string: #2F7D4F; --syn-number: #B4441F;
+  --syn-comment: #A4A7AD; --syn-operator: #5B4BDB; --syn-keyword-weight: 500; --syn-comment-style: italic;
+}
+[data-theme="dark"], [data-syntax="pseudo-dark"] {
+  --syn-bg: #161719; --syn-text: #E3E3E6; --syn-gutter: #4A4D54; --syn-line: #1E1F23;
+  --syn-keyword: #A99FFF; --syn-type: #E7C07A; --syn-string: #8FD3A5; --syn-number: #F2A07B;
+  --syn-comment: #62656D; --syn-operator: #A99FFF; --syn-keyword-weight: 500; --syn-comment-style: italic;
+}
+[data-syntax="paper"] {
+  --syn-bg: #FFFFFF; --syn-text: #1E1E1E; --syn-gutter: #BBBBBB; --syn-line: #F3F3F3;
+  --syn-keyword: #000000; --syn-type: #555555; --syn-string: #1E1E1E; --syn-number: #1E1E1E;
+  --syn-comment: #8C8C8C; --syn-operator: #000000; --syn-keyword-weight: 700; --syn-comment-style: italic;
+}
+[data-syntax="contrast"] {
+  --syn-bg: #000000; --syn-text: #FFFFFF; --syn-gutter: #8A8A8A; --syn-line: #1A1A1A;
+  --syn-keyword: #FFD84D; --syn-type: #66CCFF; --syn-string: #7CFF9B; --syn-number: #FF9E6C;
+  --syn-comment: #B0B0B0; --syn-operator: #FFD84D; --syn-keyword-weight: 600; --syn-comment-style: normal;
+}
+/* A user-made theme, as it would be saved from Settings. */
+[data-syntax="night-shift"] {
+  --syn-bg: #111821; --syn-text: #DCE3EA; --syn-gutter: #3C4856; --syn-line: #18212C;
+  --syn-keyword: #5FD4C4; --syn-type: #F2A7D8; --syn-string: #F4D58D; --syn-number: #FF9F8A;
+  --syn-comment: #5D6B7A; --syn-operator: #5FD4C4; --syn-keyword-weight: 500; --syn-comment-style: italic;
+}
+
+.tok-k { color: var(--syn-keyword); font-weight: var(--syn-keyword-weight); }
+.tok-t { color: var(--syn-type); }
+.tok-s { color: var(--syn-string); }
+.tok-n { color: var(--syn-number); }
+.tok-c { color: var(--syn-comment); font-style: var(--syn-comment-style); }
+.tok-o { color: var(--syn-operator); }
+
+* { box-sizing: border-box; }
+body { font-feature-settings: "liga" 0, "calt" 0; margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
+a { color: inherit; text-decoration: none; }
+svg.i { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+.btn { display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 16px; border-radius: 8px; font: 500 15px var(--sans); }
+.btn-primary { background: var(--accent); color: var(--accent-ink); }
+.btn-quiet { color: var(--ink); box-shadow: inset 0 0 0 1px var(--line-2); }
+.btn-sm { height: 32px; padding: 0 12px; font-size: 14px; }
+.btn:focus-visible, .icon-btn:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.icon-btn { width: 34px; height: 34px; display: inline-grid; place-items: center; border-radius: 8px; color: var(--ink-2); }
+.icon-btn:hover { background: var(--surface-2); color: var(--ink); }
+
+.mark { width: 22px; height: 22px; border-radius: 6px; background: var(--accent); color: var(--accent-ink); display: inline-grid; place-items: center; font: 600 13px var(--sans); }
+.brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; }
+
+/* Top navigation, used by every public page. */
+.topnav { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+.topnav .in { max-width: 1184px; margin: 0 auto; padding: 0 32px; height: 60px; display: flex; align-items: center; gap: 32px; }
+.topnav nav { display: flex; gap: 4px; }
+.topnav nav a { padding: 7px 12px; border-radius: 7px; color: var(--ink-2); font-size: 14.5px; }
+.topnav nav a:hover, .topnav nav a.on { color: var(--ink); background: var(--surface-2); }
+.topnav .end { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.topnav .lang { font-size: 14px; color: var(--ink-2); padding: 0 8px; }
+
+/* Code surface */
+.code { background: var(--syn-bg); color: var(--syn-text); }
+.code pre { margin: 0; font: 14.5px/28px var(--mono); font-variant-ligatures: none; }
+.line { display: flex; }
+.line .no { width: 56px; padding-right: 20px; text-align: right; color: var(--syn-gutter); flex: none; }
+.line.is-active { background: var(--syn-line); }
+.line.is-active .no { color: var(--syn-text); }
+
+/* Editor frame: rail + code + output. Shared by the app and the landing preview. */
+.frame { display: grid; grid-template-columns: 232px 1fr; grid-template-rows: 1fr auto; background: var(--bg); min-height: 0; }
+.rail { grid-row: 1 / 3; background: var(--surface); border-right: 1px solid var(--line); padding: 16px 12px; display: flex; flex-direction: column; gap: 1px; }
+.rail .brand { padding: 4px 8px 18px; font-size: 15px; }
+.rail .h { display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; color: var(--ink-3); padding: 0 8px; margin: 8px 0 4px; }
+.rail .f { display: flex; align-items: center; gap: 9px; padding: 6px 8px; border-radius: 6px; font: 13.5px var(--mono); color: var(--ink-2); }
+.rail .f.on { background: var(--surface-2); color: var(--ink); }
+.rail .f.in { padding-left: 26px; }
+.rail .l { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 6px; color: var(--ink-2); font-size: 14px; }
+.rail .l:hover { background: var(--surface-2); color: var(--ink); }
+.rail .foot { margin-top: auto; display: flex; flex-direction: column; gap: 1px; }
+
+.ed { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.ed-top { display: flex; align-items: center; gap: 4px; height: 50px; padding: 0 14px 0 8px; border-bottom: 1px solid var(--line); flex: none; }
+.tab { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-radius: 7px; font: 13.5px var(--mono); color: var(--ink-2); }
+.tab.on { background: var(--surface-2); color: var(--ink); }
+.ed-top .status { margin-left: auto; margin-right: 12px; font-size: 13px; color: var(--ink-3); display: inline-flex; align-items: center; gap: 7px; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+.ed .code { flex: 1; padding: 12px 0; overflow: hidden; }
+
+.out { border-top: 1px solid var(--line); background: var(--syn-bg); color: var(--syn-text); }
+.out-top { display: flex; align-items: center; gap: 4px; height: 40px; padding: 0 14px 0 8px; }
+.out-top .tab { height: 28px; font: 13px var(--sans); }
+.out-top .meta { margin-left: auto; font-size: 12.5px; color: var(--ink-3); }
+.out pre { margin: 0; padding: 4px 22px 16px; font: 13.5px/1.75 var(--mono); }
+.out .you { color: var(--accent); }

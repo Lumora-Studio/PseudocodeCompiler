@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>marks.pseudo — Pseudo Build</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="rail.css">
+<style>
+  html, body { height: 100%; }
+  body { overflow: hidden; }
+  .app { height: 100vh; }
+  .app .code pre { font-size: 15px; line-height: 30px; }
+  .app .out pre { min-height: 170px; }
+  .rail .search { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; margin: 0 0 10px; border-radius: 7px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--line-2); color: var(--ink-3); font-size: 13.5px; }
+  .rail .search kbd { margin-left: auto; font: 12px var(--sans); color: var(--ink-3); }
+
+  /* Settings */
+  .scrim { display: none; position: fixed; inset: 0; background: var(--scrim); z-index: 50; align-items: center; justify-content: center; }
+  [data-settings="open"] .scrim { display: flex; }
+  .settings { width: 1060px; height: 720px; background: var(--bg); border: 1px solid var(--line-2); border-radius: 14px; display: grid; grid-template-columns: 196px 1fr; overflow: hidden; box-shadow: 0 24px 60px -20px rgba(0,0,0,.45); }
+  .s-nav { background: var(--surface); border-right: 1px solid var(--line); padding: 18px 10px; display: flex; flex-direction: column; gap: 1px; }
+  .s-nav .t { font-weight: 600; padding: 0 10px 14px; }
+  .s-nav a { padding: 7px 10px; border-radius: 6px; color: var(--ink-2); font-size: 14px; }
+  .s-nav a.on { background: var(--surface-2); color: var(--ink); }
+  .s-main { display: flex; flex-direction: column; min-height: 0; }
+  .s-head { display: flex; align-items: center; height: 56px; padding: 0 16px 0 28px; border-bottom: 1px solid var(--line); flex: none; }
+  .s-head h2 { margin: 0; font-size: 16px; font-weight: 600; }
+  .s-head .icon-btn { margin-left: auto; }
+  .s-body { flex: 1; padding: 22px 28px; overflow: hidden; }
+  .s-row { display: flex; align-items: center; justify-content: space-between; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+  .s-row b, .s-sec b { font-weight: 500; display: block; }
+  .s-row span, .s-sec .hint { font-size: 13.5px; color: var(--ink-2); }
+  .seg { display: inline-flex; padding: 3px; border-radius: 9px; background: var(--surface-2); }
+  .seg a { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border-radius: 7px; font-size: 13.5px; color: var(--ink-2); }
+  .seg a.on { background: var(--bg); color: var(--ink); box-shadow: 0 0 0 1px var(--line-2); }
+
+  .s-sec { padding-top: 20px; }
+  .s-sec .head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
+  .cards { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+  .card { border-radius: 9px; overflow: hidden; box-shadow: 0 0 0 1px var(--line-2); position: relative; }
+  .card .code { padding: 10px 10px 8px; }
+  .card pre { font-size: 11px; line-height: 18px; }
+  .card .n { padding: 7px 10px; font-size: 12.5px; border-top: 1px solid var(--line); background: var(--bg); display: flex; justify-content: space-between; align-items: center; }
+  .card.on { box-shadow: 0 0 0 2px var(--accent); }
+  .card.on .n { color: var(--ink); font-weight: 500; }
+  .card.on .n svg { color: var(--accent); width: 14px; height: 14px; }
+  .card.new { display: grid; place-items: center; box-shadow: inset 0 0 0 1px var(--line-2); border: 1px dashed transparent; color: var(--ink-2); font-size: 13px; gap: 6px; align-content: center; background: var(--surface); }
+
+  .editor { display: grid; grid-template-columns: 1fr 340px; gap: 20px; }
+  .tokens { border-top: 1px solid var(--line); }
+  .tk { display: grid; grid-template-columns: 22px 104px 1fr 104px 58px; align-items: center; gap: 10px; height: 38px; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+  .tk .sw { width: 18px; height: 18px; border-radius: 5px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.12), 0 0 0 1px var(--line-2); }
+  .tk .smp { font: 12.5px var(--mono); white-space: nowrap; overflow: hidden; }
+  .tk .hex { height: 28px; border-radius: 6px; box-shadow: inset 0 0 0 1px var(--line-2); display: flex; align-items: center; padding: 0 9px; font: 12.5px var(--mono); color: var(--ink); background: var(--bg); }
+  .tk .hex.focus { box-shadow: inset 0 0 0 1.5px var(--accent); }
+  .tk .st { display: flex; gap: 4px; }
+  .tk .st a { width: 26px; height: 26px; border-radius: 6px; display: grid; place-items: center; font: 600 13px var(--sans); color: var(--ink-3); }
+  .tk .st a.on { background: var(--surface-2); color: var(--ink); }
+  .tk .st a.it { font-style: italic; font-family: Georgia, serif; }
+  .live { border-radius: 10px; overflow: hidden; box-shadow: 0 0 0 1px var(--line-2); display: flex; flex-direction: column; }
+  .live .bar { font-size: 12.5px; color: var(--ink-2); padding: 8px 12px; background: var(--surface); border-bottom: 1px solid var(--line); }
+  .live .code { flex: 1; padding: 10px 0; }
+  .live pre { font-size: 12.5px; line-height: 24px; }
+  .live .line .no { width: 38px; padding-right: 14px; }
+
+  .s-foot { display: flex; align-items: center; gap: 8px; padding: 14px 20px 14px 28px; border-top: 1px solid var(--line); flex: none; }
+  .s-foot .sp { flex: 1; }
+  .s-foot .muted { font-size: 13px; color: var(--ink-3); margin-right: 8px; }
+</style>
+</head>
+<body>
+  <div class="frame app">
+    <aside class="rail">
+      <span class="brand"><span class="mark">P</span>Pseudo Build</span>
+      <div class="search"><i data-i="search"></i>Search files<kbd>⌘K</kbd></div>
+      <div class="h">Files <i data-i="plus"></i></div>
+      <a class="f on" href="#"><i data-i="file"></i>marks.pseudo</a>
+      <a class="f" href="#"><i data-i="file"></i>sum.pseudo</a>
+      <a class="f" href="#"><i data-i="file"></i>search.pseudo</a>
+      <a class="f" href="#"><i data-i="folder"></i>practice</a>
+      <a class="f in" href="#"><i data-i="file"></i>bubble.pseudo</a>
+      <a class="f in" href="#"><i data-i="file"></i>linear.pseudo</a>
+      <div class="foot">
+        <a class="l" href="#"><i data-i="shuffle"></i>Practice</a>
+        <a class="l" href="#"><i data-i="book"></i>Manual</a>
+        <a class="l" href="#"><i data-i="sliders"></i>Settings</a>
+      </div>
+    </aside>
+    <div class="ed">
+      <div class="ed-top">
+        <span class="tab on">marks.pseudo</span><span class="tab">sum.pseudo</span>
+        <span class="status"><i class="dot"></i>Compiled, saved in this browser</span>
+        <a class="btn btn-primary btn-sm" href="#"><i data-i="play"></i>Run</a>
+      </div>
+      <div class="code">
+<pre data-hl data-lines data-active="9">
+// Average of three valid marks
+DECLARE Count : INTEGER
+DECLARE Mark : INTEGER
+DECLARE Total : INTEGER
+Total ← 0
+FOR Count ← 1 TO 3
+    REPEAT
+        OUTPUT "Enter mark ", Count
+        INPUT Mark
+    UNTIL Mark >= 0 AND Mark <= 100
+    Total ← Total + Mark
+NEXT Count
+OUTPUT "Average = ", Total / 3</pre>
+      </div>
+    </div>
+    <div class="out">
+      <div class="out-top"><span class="tab on">Output</span><span class="tab">Problems</span><span class="meta">Finished in 4 ms</span></div>
+<pre>Enter mark 1
+<span class="you">72</span>
+Enter mark 2
+<span class="you">90</span>
+Enter mark 3
+<span class="you">63</span>
+Average = 75</pre>
+    </div>
+  </div>
+
+  <div class="scrim">
+    <div class="settings" role="dialog" aria-label="Settings">
+      <nav class="s-nav">
+        <div class="t">Settings</div>
+        <a href="#">General</a><a href="#">Editor</a><a class="on" href="#">Appearance</a><a href="#">Keyboard</a>
+      </nav>
+      <div class="s-main">
+        <div class="s-head"><h2>Appearance</h2><a class="icon-btn" href="#" aria-label="Close"><i data-i="x"></i></a></div>
+        <div class="s-body">
+          <div class="s-row">
+            <div><b>Interface</b><span>Colours for menus, panels and the website.</span></div>
+            <div class="seg"><a href="#"><i data-i="sun"></i>Light</a><a class="on" href="#"><i data-i="moon"></i>Dark</a><a href="#"><i data-i="monitor"></i>System</a></div>
+          </div>
+
+          <div class="s-sec">
+            <div class="head"><b>Code theme</b><span class="hint">Applies to the editor, output and docs examples.</span></div>
+            <div class="cards">
+              <div class="card"><div class="code" data-syntax="pseudo-light"><pre data-hl>
+IF Mark > 50
+  OUTPUT "Pass"</pre></div><div class="n">Pseudo Light</div></div>
+              <div class="card"><div class="code" data-syntax="pseudo-dark"><pre data-hl>
+IF Mark > 50
+  OUTPUT "Pass"</pre></div><div class="n">Pseudo Dark</div></div>
+              <div class="card"><div class="code" data-syntax="paper"><pre data-hl>
+IF Mark > 50
+  OUTPUT "Pass"</pre></div><div class="n">Paper</div></div>
+              <div class="card"><div class="code" data-syntax="contrast"><pre data-hl>
+IF Mark > 50
+  OUTPUT "Pass"</pre></div><div class="n">High contrast</div></div>
+              <div class="card on"><div class="code" data-syntax="night-shift"><pre data-hl>
+IF Mark > 50
+  OUTPUT "Pass"</pre></div><div class="n">Night shift <i data-i="check"></i></div></div>
+              <a class="card new" href="#"><i data-i="plus"></i>New theme</a>
+            </div>
+          </div>
+
+          <div class="s-sec">
+            <div class="head"><b>Edit Night shift</b><span class="hint">Your theme. Changes show in the preview straight away.</span></div>
+            <div class="editor">
+              <div class="tokens" data-syntax="night-shift">
+                <div class="tk"><i class="sw" style="background:#5FD4C4"></i>Keywords<span class="smp"><span class="tok-k">DECLARE FOR IF</span></span><span class="hex focus">#5FD4C4</span><span class="st"><a class="on" href="#">B</a><a class="it" href="#">I</a></span></div>
+                <div class="tk"><i class="sw" style="background:#F2A7D8"></i>Types<span class="smp"><span class="tok-t">INTEGER STRING</span></span><span class="hex">#F2A7D8</span><span class="st"><a href="#">B</a><a class="it" href="#">I</a></span></div>
+                <div class="tk"><i class="sw" style="background:#F4D58D"></i>Strings<span class="smp"><span class="tok-s">"Enter mark"</span></span><span class="hex">#F4D58D</span><span class="st"><a href="#">B</a><a class="it" href="#">I</a></span></div>
+                <div class="tk"><i class="sw" style="background:#FF9F8A"></i>Numbers<span class="smp"><span class="tok-n">0 100 3.5</span></span><span class="hex">#FF9F8A</span><span class="st"><a href="#">B</a><a class="it" href="#">I</a></span></div>
+                <div class="tk"><i class="sw" style="background:#5D6B7A"></i>Comments<span class="smp"><span class="tok-c">// a note</span></span><span class="hex">#5D6B7A</span><span class="st"><a href="#">B</a><a class="it on" href="#">I</a></span></div>
+                <div class="tk"><i class="sw" style="background:#5FD4C4"></i>Operators<span class="smp"><span class="tok-o">← + &lt;=</span></span><span class="hex">#5FD4C4</span><span class="st"><a href="#">B</a><a class="it" href="#">I</a></span></div>
+                <div class="tk"><i class="sw" style="background:#DCE3EA"></i>Names<span class="smp" style="color:#DCE3EA">Count Mark</span><span class="hex">#DCE3EA</span><span class="st"><a href="#">B</a><a class="it" href="#">I</a></span></div>
+                <div class="tk"><i class="sw" style="background:#111821"></i>Background<span class="smp" style="color:var(--ink-3)">Editor, output</span><span class="hex">#111821</span><span></span></div>
+              </div>
+              <div class="live">
+                <div class="bar">Preview</div>
+                <div class="code" data-syntax="night-shift">
+<pre data-hl data-lines data-active="4">
+// Count the passes
+DECLARE Passes : INTEGER
+Passes ← 0
+FOR Count ← 1 TO 30
+    IF Marks[Count] >= 50
+      THEN
+        Passes ← Passes + 1
+    ENDIF
+NEXT Count
+OUTPUT "Passed: ", Passes</pre>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="s-foot">
+          <a class="btn btn-quiet btn-sm" href="#">Import</a>
+          <a class="btn btn-quiet btn-sm" href="#">Export as JSON</a>
+          <span class="sp"></span>
+          <span class="muted">Saved with your settings</span>
+          <a class="btn btn-primary btn-sm" href="#">Done</a>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="common.js"></script>
+</body>
+</html>
