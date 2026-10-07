@@ -43,14 +43,14 @@
   .card .n { padding: 7px 10px; font-size: 12.5px; border-top: 1px solid var(--line); background: var(--bg); display: flex; justify-content: space-between; align-items: center; }
   .card.on { box-shadow: 0 0 0 2px var(--accent); }
   .card.on .n { color: var(--ink); font-weight: 500; }
-  .card.on .n svg { color: var(--accent); width: 14px; height: 14px; }
+  .card.on .n::after { content: "✓"; color: var(--accent); font-weight: 600; }
   .card.new { display: grid; place-items: center; box-shadow: inset 0 0 0 1px var(--line-2); border: 1px dashed transparent; color: var(--ink-2); font-size: 13px; gap: 6px; align-content: center; background: var(--surface); }
 
   .editor { display: grid; grid-template-columns: 1fr 340px; gap: 20px; }
   .tokens { border-top: 1px solid var(--line); }
   .tk { display: grid; grid-template-columns: 22px 104px 1fr 104px 58px; align-items: center; gap: 10px; height: 38px; border-bottom: 1px solid var(--line); font-size: 13.5px; }
   .tk .sw { width: 18px; height: 18px; border-radius: 5px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.12), 0 0 0 1px var(--line-2); }
-  .tk .smp { font: 12.5px var(--mono); white-space: nowrap; overflow: hidden; }
+  .tk .smp { font: 12.5px var(--mono); white-space: nowrap; overflow: hidden; background: var(--syn-bg); border-radius: 5px; padding: 4px 8px; font-variant-ligatures: none; }
   .tk .hex { height: 28px; border-radius: 6px; box-shadow: inset 0 0 0 1px var(--line-2); display: flex; align-items: center; padding: 0 9px; font: 12.5px var(--mono); color: var(--ink); background: var(--bg); }
   .tk .hex.focus { box-shadow: inset 0 0 0 1.5px var(--accent); }
   .tk .st { display: flex; gap: 4px; }
@@ -63,6 +63,8 @@
   .live pre { font-size: 12.5px; line-height: 24px; }
   .live .line .no { width: 38px; padding-right: 14px; }
 
+  .builtin { border-top: 1px solid var(--line); padding-top: 18px; }
+  .builtin p { margin: 0 0 14px; color: var(--ink-2); max-width: 30em; }
   .s-foot { display: flex; align-items: center; gap: 8px; padding: 14px 20px 14px 28px; border-top: 1px solid var(--line); flex: none; }
   .s-foot .sp { flex: 1; }
   .s-foot .muted { font-size: 13px; color: var(--ink-3); margin-right: 8px; }
@@ -74,7 +76,7 @@
       <span class="brand"><span class="mark">P</span>Pseudo Build</span>
       <div class="search"><i data-i="search"></i>Search files<kbd>⌘K</kbd></div>
       <div class="h">Files <i data-i="plus"></i></div>
-      <a class="f on" href="#"><i data-i="file"></i>marks.pseudo</a>
+      <a class="f on" id="file-marks" href="#"><i data-i="file"></i>marks.pseudo</a>
       <a class="f" href="#"><i data-i="file"></i>sum.pseudo</a>
       <a class="f" href="#"><i data-i="file"></i>search.pseudo</a>
       <a class="f" href="#"><i data-i="folder"></i>practice</a>
@@ -88,12 +90,12 @@
     </aside>
     <div class="ed">
       <div class="ed-top">
-        <span class="tab on">marks.pseudo</span><span class="tab">sum.pseudo</span>
-        <span class="status"><i class="dot"></i>Compiled, saved in this browser</span>
+        <span class="tab on" id="file-tab">marks.pseudo</span><span class="tab">sum.pseudo</span>
+        <span class="status"><i class="dot"></i>Compiled and saved</span>
         <a class="btn btn-primary btn-sm" href="#"><i data-i="play"></i>Run</a>
       </div>
       <div class="code">
-<pre data-hl data-lines data-active="9">
+<pre id="main-code" data-hl data-lines data-active="9">
 // Average of three valid marks
 DECLARE Count : INTEGER
 DECLARE Mark : INTEGER
@@ -111,7 +113,7 @@ OUTPUT "Average = ", Total / 3</pre>
     </div>
     <div class="out">
       <div class="out-top"><span class="tab on">Output</span><span class="tab">Problems</span><span class="meta">Finished in 4 ms</span></div>
-<pre>Enter mark 1
+<pre id="main-out">Enter mark 1
 <span class="you">72</span>
 Enter mark 2
 <span class="you">90</span>
@@ -152,27 +154,28 @@ IF Mark > 50
   OUTPUT "Pass"</pre></div><div class="n">High contrast</div></div>
               <div class="card on"><div class="code" data-syntax="night-shift"><pre data-hl>
 IF Mark > 50
-  OUTPUT "Pass"</pre></div><div class="n">Night shift <i data-i="check"></i></div></div>
+  OUTPUT "Pass"</pre></div><div class="n">Night shift</div></div>
               <a class="card new" href="#"><i data-i="plus"></i>New theme</a>
             </div>
           </div>
 
           <div class="s-sec">
-            <div class="head"><b>Edit Night shift</b><span class="hint">Your theme. Changes show in the preview straight away.</span></div>
+            <div class="head"><b id="edit-title">Edit Night shift</b><span class="hint" id="edit-hint">Your theme. Changes show in the preview straight away.</span></div>
             <div class="editor">
+              <div class="builtin" hidden><p id="builtin-text"></p><a class="btn btn-quiet btn-sm" href="#" id="builtin-btn">Duplicate</a></div>
               <div class="tokens" data-syntax="night-shift">
                 <div class="tk"><i class="sw" style="background:#5FD4C4"></i>Keywords<span class="smp"><span class="tok-k">DECLARE FOR IF</span></span><span class="hex focus">#5FD4C4</span><span class="st"><a class="on" href="#">B</a><a class="it" href="#">I</a></span></div>
                 <div class="tk"><i class="sw" style="background:#F2A7D8"></i>Types<span class="smp"><span class="tok-t">INTEGER STRING</span></span><span class="hex">#F2A7D8</span><span class="st"><a href="#">B</a><a class="it" href="#">I</a></span></div>
                 <div class="tk"><i class="sw" style="background:#F4D58D"></i>Strings<span class="smp"><span class="tok-s">"Enter mark"</span></span><span class="hex">#F4D58D</span><span class="st"><a href="#">B</a><a class="it" href="#">I</a></span></div>
                 <div class="tk"><i class="sw" style="background:#FF9F8A"></i>Numbers<span class="smp"><span class="tok-n">0 100 3.5</span></span><span class="hex">#FF9F8A</span><span class="st"><a href="#">B</a><a class="it" href="#">I</a></span></div>
-                <div class="tk"><i class="sw" style="background:#5D6B7A"></i>Comments<span class="smp"><span class="tok-c">// a note</span></span><span class="hex">#5D6B7A</span><span class="st"><a href="#">B</a><a class="it on" href="#">I</a></span></div>
+                <div class="tk"><i class="sw" style="background:#6E7D8D"></i>Comments<span class="smp"><span class="tok-c">// a note</span></span><span class="hex">#6E7D8D</span><span class="st"><a href="#">B</a><a class="it on" href="#">I</a></span></div>
                 <div class="tk"><i class="sw" style="background:#5FD4C4"></i>Operators<span class="smp"><span class="tok-o">← + &lt;=</span></span><span class="hex">#5FD4C4</span><span class="st"><a href="#">B</a><a class="it" href="#">I</a></span></div>
-                <div class="tk"><i class="sw" style="background:#DCE3EA"></i>Names<span class="smp" style="color:#DCE3EA">Count Mark</span><span class="hex">#DCE3EA</span><span class="st"><a href="#">B</a><a class="it" href="#">I</a></span></div>
-                <div class="tk"><i class="sw" style="background:#111821"></i>Background<span class="smp" style="color:var(--ink-3)">Editor, output</span><span class="hex">#111821</span><span></span></div>
+                <div class="tk"><i class="sw" style="background:#DCE3EA"></i>Names<span class="smp"><span class="tok-name">Count Mark</span></span><span class="hex">#DCE3EA</span><span class="st"><a href="#">B</a><a class="it" href="#">I</a></span></div>
+                <div class="tk"><i class="sw" style="background:#111821"></i>Background<span class="smp"><span class="tok-name">Editor, output</span></span><span class="hex">#111821</span><span></span></div>
               </div>
               <div class="live">
                 <div class="bar">Preview</div>
-                <div class="code" data-syntax="night-shift">
+                <div class="code" id="live-code" data-syntax="night-shift">
 <pre data-hl data-lines data-active="4">
 // Count the passes
 DECLARE Passes : INTEGER
@@ -199,6 +202,52 @@ OUTPUT "Passed: ", Passes</pre>
       </div>
     </div>
   </div>
+  <script>
+    (function () {
+      const q = new URLSearchParams(location.search);
+
+      // Opening an example from the docs replaces the editor content with that example.
+      const examples = {
+        "times-table.pseudo": {
+          code: "DECLARE Count : INTEGER\nFOR Count ← 1 TO 5\n    OUTPUT Count, \" x 7 = \", Count * 7\nNEXT Count",
+          out: "1 x 7 = 7\n2 x 7 = 14\n3 x 7 = 21\n4 x 7 = 28\n5 x 7 = 35",
+        },
+      };
+      const ex = examples[q.get("open")];
+      if (ex) {
+        document.getElementById("file-tab").textContent = q.get("open");
+        const marks = document.getElementById("file-marks");
+        marks.classList.remove("on");
+        marks.insertAdjacentHTML("beforebegin", '<a class="f on" href="#"><i data-i="file"></i>' + q.get("open") + "</a>");
+        const code = document.getElementById("main-code");
+        code.textContent = ex.code;
+        code.removeAttribute("data-active");
+        document.getElementById("main-out").textContent = ex.out;
+      }
+
+      // Settings shows whichever code theme is active.
+      const dark = q.get("theme") === "dark";
+      const active = q.get("syntax") || (dark ? "pseudo-dark" : "pseudo-light");
+      let activeName = "";
+      document.querySelectorAll(".card").forEach((card) => {
+        const code = card.querySelector(".code");
+        const on = !!code && code.dataset.syntax === active;
+        card.classList.toggle("on", on);
+        if (on) activeName = card.querySelector(".n").textContent.trim();
+      });
+      const custom = active === "night-shift";
+      document.getElementById("live-code").dataset.syntax = active;
+      if (!custom) {
+        document.querySelector(".tokens").hidden = true;
+        const note = document.querySelector(".builtin");
+        note.hidden = false;
+        document.getElementById("edit-title").textContent = activeName;
+        document.getElementById("edit-hint").textContent = "Built-in theme";
+        document.getElementById("builtin-text").textContent = activeName + " is built in, so its colours are fixed. Duplicate it to make your own version you can edit.";
+        document.getElementById("builtin-btn").textContent = "Duplicate " + activeName;
+      }
+    })();
+  </script>
   <script src="common.js"></script>
 </body>
 </html>

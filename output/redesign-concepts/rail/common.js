@@ -7,9 +7,9 @@
 })();
 (function () {
   const st = document.createElement("style"); st.textContent = "pre, pre *, code { font-variant-ligatures: none !important; font-feature-settings: \"liga\" 0, \"calt\" 0 !important; }"; document.head.append(st);
-  const KW = "DECLARE|CONSTANT|FOR|TO|STEP|NEXT|REPEAT|UNTIL|WHILE|DO|ENDWHILE|IF|THEN|ELSE|ENDIF|CASE|OF|OTHERWISE|ENDCASE|OUTPUT|INPUT|PROCEDURE|ENDPROCEDURE|FUNCTION|RETURNS|RETURN|ENDFUNCTION|CALL|AND|OR|NOT|MOD|DIV";
+  const KW = "DECLARE|CONSTANT|FOR|TO|STEP|NEXT|REPEAT|UNTIL|WHILE|DO|ENDWHILE|IF|THEN|ELSE|ENDIF|CASE|OF|OTHERWISE|ENDCASE|OUTPUT|INPUT|PROCEDURE|ENDPROCEDURE|FUNCTION|RETURNS|RETURN|ENDFUNCTION|CALL";
   const TY = "INTEGER|REAL|STRING|BOOLEAN|CHAR|ARRAY|TRUE|FALSE";
-  const re = new RegExp(`(\\/\\/.*$)|("[^"]*")|\\b(${KW})\\b|\\b(${TY})\\b|\\b(\\d+(?:\\.\\d+)?)\\b|(←|<-)`, "gm");
+  const re = new RegExp(`(\\/\\/.*$)|("[^"]*")|\\b(${KW})\\b|\\b(${TY})\\b|\\b(\\d+(?:\\.\\d+)?)\\b|(←|<-|<=|>=|<>|\\b(?:AND|OR|NOT|MOD|DIV)\\b|[-+*/=<>&])`, "gm");
   const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   function hl(src) {
     let out = "", last = 0, m;

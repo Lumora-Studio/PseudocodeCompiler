@@ -9,8 +9,8 @@
   --line: #ECECEE;
   --line-2: #E0E0E4;
   --ink: #18191B;
-  --ink-2: #6E7177;
-  --ink-3: #9A9DA3;
+  --ink-2: #5C5F66;
+  --ink-3: #707379;
   --accent: #5B4BDB;
   --accent-ink: #FFFFFF;
   --accent-soft: #EEECFC;
@@ -28,8 +28,8 @@
   --line: #26282C;
   --line-2: #33353B;
   --ink: #ECECEE;
-  --ink-2: #9A9DA4;
-  --ink-3: #6B6E75;
+  --ink-2: #A6A9B0;
+  --ink-3: #8A8D94;
   --accent: #8E83F5;
   --accent-ink: #141416;
   --accent-soft: #2A2742;
@@ -39,40 +39,64 @@
   color-scheme: dark;
 }
 
-/* Syntax themes. The default follows the interface theme. */
-:root, [data-syntax="pseudo-light"] {
+/* Syntax themes. With no data-syntax the code colours follow the interface theme.
+   Presets use a doubled attribute selector so an explicit choice always beats
+   the [data-theme="dark"] default when both sit on the same element. */
+:root {
   --syn-bg: #FFFFFF; --syn-text: #18191B; --syn-gutter: #BDBFC4; --syn-line: #F6F6F8;
   --syn-keyword: #5B4BDB; --syn-type: #9A5B13; --syn-string: #2F7D4F; --syn-number: #B4441F;
-  --syn-comment: #A4A7AD; --syn-operator: #5B4BDB; --syn-keyword-weight: 500; --syn-comment-style: italic;
+  --syn-comment: #8E9198; --syn-operator: #5B4BDB;
+  /* Every token type has a weight and a style, so each B and I toggle in Settings maps to a value. */
+  --syn-keyword-weight: 500; --syn-keyword-style: normal;
+  --syn-type-weight: 400; --syn-type-style: normal;
+  --syn-string-weight: 400; --syn-string-style: normal;
+  --syn-number-weight: 400; --syn-number-style: normal;
+  --syn-comment-weight: 400; --syn-comment-style: italic;
+  --syn-operator-weight: 400; --syn-operator-style: normal;
+  --syn-text-weight: 400; --syn-text-style: normal;
 }
-[data-theme="dark"], [data-syntax="pseudo-dark"] {
+[data-theme="dark"] {
   --syn-bg: #161719; --syn-text: #E3E3E6; --syn-gutter: #4A4D54; --syn-line: #1E1F23;
   --syn-keyword: #A99FFF; --syn-type: #E7C07A; --syn-string: #8FD3A5; --syn-number: #F2A07B;
-  --syn-comment: #62656D; --syn-operator: #A99FFF; --syn-keyword-weight: 500; --syn-comment-style: italic;
+  --syn-comment: #7A7D86; --syn-operator: #A99FFF;
 }
-[data-syntax="paper"] {
+[data-syntax][data-syntax="pseudo-light"] {
+  --syn-bg: #FFFFFF; --syn-text: #18191B; --syn-gutter: #BDBFC4; --syn-line: #F6F6F8;
+  --syn-keyword: #5B4BDB; --syn-type: #9A5B13; --syn-string: #2F7D4F; --syn-number: #B4441F;
+  --syn-comment: #8E9198; --syn-operator: #5B4BDB;
+}
+[data-syntax][data-syntax="pseudo-dark"] {
+  --syn-bg: #161719; --syn-text: #E3E3E6; --syn-gutter: #4A4D54; --syn-line: #1E1F23;
+  --syn-keyword: #A99FFF; --syn-type: #E7C07A; --syn-string: #8FD3A5; --syn-number: #F2A07B;
+  --syn-comment: #7A7D86; --syn-operator: #A99FFF;
+}
+[data-syntax][data-syntax="paper"] {
   --syn-bg: #FFFFFF; --syn-text: #1E1E1E; --syn-gutter: #BBBBBB; --syn-line: #F3F3F3;
   --syn-keyword: #000000; --syn-type: #555555; --syn-string: #1E1E1E; --syn-number: #1E1E1E;
-  --syn-comment: #8C8C8C; --syn-operator: #000000; --syn-keyword-weight: 700; --syn-comment-style: italic;
+  --syn-comment: #767676; --syn-operator: #000000;
+  --syn-keyword-weight: 700; --syn-string-style: italic;
 }
-[data-syntax="contrast"] {
+[data-syntax][data-syntax="contrast"] {
   --syn-bg: #000000; --syn-text: #FFFFFF; --syn-gutter: #8A8A8A; --syn-line: #1A1A1A;
   --syn-keyword: #FFD84D; --syn-type: #66CCFF; --syn-string: #7CFF9B; --syn-number: #FF9E6C;
-  --syn-comment: #B0B0B0; --syn-operator: #FFD84D; --syn-keyword-weight: 600; --syn-comment-style: normal;
+  --syn-comment: #B0B0B0; --syn-operator: #FFD84D;
+  --syn-keyword-weight: 700; --syn-comment-style: normal;
 }
 /* A user-made theme, as it would be saved from Settings. */
-[data-syntax="night-shift"] {
+[data-syntax][data-syntax="night-shift"] {
   --syn-bg: #111821; --syn-text: #DCE3EA; --syn-gutter: #3C4856; --syn-line: #18212C;
   --syn-keyword: #5FD4C4; --syn-type: #F2A7D8; --syn-string: #F4D58D; --syn-number: #FF9F8A;
-  --syn-comment: #5D6B7A; --syn-operator: #5FD4C4; --syn-keyword-weight: 500; --syn-comment-style: italic;
+  --syn-comment: #6E7D8D; --syn-operator: #5FD4C4;
+  --syn-keyword-weight: 700; --syn-comment-style: italic;
 }
 
-.tok-k { color: var(--syn-keyword); font-weight: var(--syn-keyword-weight); }
-.tok-t { color: var(--syn-type); }
-.tok-s { color: var(--syn-string); }
-.tok-n { color: var(--syn-number); }
-.tok-c { color: var(--syn-comment); font-style: var(--syn-comment-style); }
-.tok-o { color: var(--syn-operator); }
+.code, .tok-name { color: var(--syn-text); font-weight: var(--syn-text-weight); font-style: var(--syn-text-style); }
+.tok-k { color: var(--syn-keyword); font-weight: var(--syn-keyword-weight); font-style: var(--syn-keyword-style); }
+.tok-t { color: var(--syn-type); font-weight: var(--syn-type-weight); font-style: var(--syn-type-style); }
+.tok-s { color: var(--syn-string); font-weight: var(--syn-string-weight); font-style: var(--syn-string-style); }
+.tok-n { color: var(--syn-number); font-weight: var(--syn-number-weight); font-style: var(--syn-number-style); }
+.tok-c { color: var(--syn-comment); font-weight: var(--syn-comment-weight); font-style: var(--syn-comment-style); }
+.tok-o { color: var(--syn-operator); font-weight: var(--syn-operator-weight); font-style: var(--syn-operator-style); }
 
 * { box-sizing: border-box; }
 body { font-feature-settings: "liga" 0, "calt" 0; margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
@@ -100,8 +124,8 @@ svg.i { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-widt
 .topnav .lang { font-size: 14px; color: var(--ink-2); padding: 0 8px; }
 
 /* Code surface */
-.code { background: var(--syn-bg); color: var(--syn-text); }
-.code pre { margin: 0; font: 14.5px/28px var(--mono); font-variant-ligatures: none; }
+.code { background: var(--syn-bg); }
+.code pre { margin: 0; font: 14.5px/28px var(--mono); font-weight: inherit; font-style: inherit; font-variant-ligatures: none; }
 .line { display: flex; }
 .line .no { width: 56px; padding-right: 20px; text-align: right; color: var(--syn-gutter); flex: none; }
 .line.is-active { background: var(--syn-line); }
